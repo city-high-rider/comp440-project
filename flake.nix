@@ -7,5 +7,10 @@
   outputs = { nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let pkgs = nixpkgs.legacyPackages.${system};
-      in { devShells.default = pkgs.mkShell { shellHook = "echo hello!"; }; });
+      in {
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [ idris2 ];
+          shellHook = "echo Entered Comp Devshell...";
+        };
+      });
 }
