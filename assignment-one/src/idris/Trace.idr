@@ -7,6 +7,7 @@ import Task
 
 %default total
 
+public export
 record Scheduler where
   constructor MkScheduler
   pending : List Task
@@ -14,6 +15,7 @@ record Scheduler where
   running : Maybe Task
   finished : List Task
 
+public export
 data Step : Graph -> Scheduler -> Scheduler -> Type where
   Start :
     {depGraph : Graph} ->
@@ -54,6 +56,7 @@ data Step : Graph -> Scheduler -> Scheduler -> Type where
     in Step depGraph current next
           
 
+public export
 data Trace : Graph -> Scheduler -> Scheduler -> Type where
   StartHere : (initialState : Scheduler) -> Trace g initialState initialState
   WithStep : Step depGraph a b -> Trace depGraph b c -> Trace depGraph a c
