@@ -55,3 +55,7 @@ data Step : Graph -> Scheduler -> Scheduler -> Type where
     in Step depGraph current next
           
 
+data Trace : Graph -> Scheduler -> Scheduler -> Type where
+  StartHere : (initialState : Scheduler) -> Trace g initialState initialState
+  WithStep : Step depGraph a b -> Trace depGraph b c -> Trace depGraph a c
+
