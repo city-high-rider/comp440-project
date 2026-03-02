@@ -18,6 +18,10 @@ SsEq a b = (All (`Elem`b) a, All (`Elem`a) b)
 test1 : SsEq [1,2] [2, 1]
 test1 = (KeepLooking Here :: (Here :: VacuouslyTrue), KeepLooking Here :: (Here :: VacuouslyTrue))
 
+extractPrf : x `Elem` xs -> All prop xs -> prop x
+extractPrf Here (y :: _) = y
+extractPrf (KeepLooking y) (_ :: w) = extractPrf y w
+
 listContainsItsContents : {list : _} -> All (`Elem`list) list
 listContainsItsContents {list = []} = VacuouslyTrue
 listContainsItsContents {list = (x :: xs)} =
@@ -34,11 +38,12 @@ ssEqRefl = (listContainsItsContents, listContainsItsContents)
 ssEqSym : a `SsEq` b -> b `SsEq` a
 ssEqSym (x, y) = (y, x)
 
-ssEqTrans : a `SsEq` b -> b `SsEq` c -> a `SsEq` c
+ssEqTrans : {a,b,c : _} -> a `SsEq` b -> b `SsEq` c -> a `SsEq` c
 ssEqTrans (assb, bssa) (bssc, cssb) =
   let
-    num = 1
+    assc = propImplies (\_, einb => extractPrf einb bssc) assb
+    cssa = propImplies (\_, einb => extractPrf einb bssa) cssb
   in
-  ?hole
+  (assc, cssa)
 
 
