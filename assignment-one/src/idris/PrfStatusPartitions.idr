@@ -21,7 +21,11 @@ involvedTasks (MkScheduler pending ready running finished) =
 
 tasksConstant : Trace deps start end -> (involvedTasks start) = (involvedTasks end)
 tasksConstant (StartHere end) = Refl
-tasksConstant (WithStep (Start start doThis prfReady prfIdle) y) = ?tasksConstant_rhs_2
+tasksConstant (WithStep (Start start doThis prfReady prfIdle) y) =
+  let
+    ind = tasksConstant y
+  in
+  ?hole
 tasksConstant (WithStep (Complete start finishThis prfRun) y) = ?tasksConstant_rhs_3
 tasksConstant (WithStep (Enqueue start queueThis prfPending prfDeps) y) = ?tasksConstant_rhs_4
 
