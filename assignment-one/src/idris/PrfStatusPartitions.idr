@@ -9,8 +9,9 @@ import Data.List
 
 {-
 Want to prove that:
-The total number of tasks in the scheduler does not change; i.e. it is consistent throughout 
-the whole trace.
+The tasks involved with the scheduler do not change, i.e.
+for any trace, for any two states mentioned in the trace, the set of involved tasks in both states are equivalent.
+(Where the set of involved tasks is the union between running tasks, ready tasks, pending tasks, and finished tasks.)
 -}
 
 involvedTasks : Scheduler -> List Task
@@ -19,13 +20,13 @@ involvedTasks (MkScheduler pending ready running finished) =
        Nothing => ready ++ pending ++ finished
        Just r => r :: ready ++ pending ++ finished
 
-tasksConstant : Trace deps start end -> (involvedTasks start) = (involvedTasks end)
-tasksConstant (StartHere end) = Refl
+tasksConstant : Trace deps start end -> (involvedTasks start) `SsEq` (involvedTasks end)
+tasksConstant (StartHere end) = ssEqRefl
 tasksConstant (WithStep (Start start doThis prfReady prfIdle) y) =
   let
     ind = tasksConstant y
   in
-  ?hole
+  ssEqTrans ?hole ind
 tasksConstant (WithStep (Complete start finishThis prfRun) y) = ?tasksConstant_rhs_3
 tasksConstant (WithStep (Enqueue start queueThis prfPending prfDeps) y) = ?tasksConstant_rhs_4
 
