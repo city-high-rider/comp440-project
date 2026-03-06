@@ -6,11 +6,27 @@
   };
   outputs = { nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = nixpkgs.legacyPackages.${system};
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        edit-report = pkgs.writeShellApplication {
+          name = "edit-report";
+          runtimeInputs = with pkgs; [
+            pandoc
+            python314Packages.weasyprint
+            mupdf
+            entr
+          ];
+          text = ''
+            echo "$1" | entr -n pandoc --pdf-engine=weasyprint "$1" -o "$2" &
+            echo "$2" | entr -n pkill -HUP mupdf &
+            mupdf "$2" 
+          '';
+        };
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             idris2
+            # Because Helix does not support Idris interactive edititng.
             ((vim-full.override { }).customize {
               name = "vim";
               # Install plugins
@@ -51,6 +67,7 @@
             })
             vscodium
             idris2Packages.idris2Lsp
+            edit-report
           ];
 
           shellHook = "echo Entered Comp Devshell...";
