@@ -1,3 +1,17 @@
-# Hello there
+# Verifying a Simple DAG Scheduler in Idris2 and in Coq
 
-## Some more text
+###### (TODO: My ID here) - COMP440 Assignment One
+
+---
+
+## Introduction
+
+On August 14th 2003, an estimated fifty-five million people in the Northeasten United states were affected by what was at the time the second most widespread power outage in history. The incident lasted until the sixteenth of August, and during that time, transportation, communication, and water infrastructure were also affected.<br>
+The chain of events leading up to the outage was started by a race condition in some energy monitoring software, which deprived system operators of critical information for over an hour.
+The Northeast blackout is a good example to illustrate the dangers of subtle logic errors in computer programs, but it is far from the only one. Up until recently, correctness of computer programs was mostly checked with unit and fuzz tests. That is, executing the program with lots of random inputs, and making sure that all the outputs are sensible. Correctness was important, but programmers had to juggle several other factors: performance, code maintainability, and user-friendliness each demanded attention too. As such, formal methods were generally seen as too expensive and complicated to be worthwhile. However, as programs moved from simple, imperative routines to massive systems that no individual human could comprehend, programming paradims started to shift as well. Programs that were state-heavy or relied on parallel / concurrent execution began to exhibit subtle bugs that were hard to reliably reproduce or catch with standard testing. Language features that were convenient for smaller programs, such as implicit type conversion and nullability, started introducing elusive problems in larger ones.
+Therefore, programmers increasingly realized they could no longer rely on discipline alone: correctness had to be built into the tools they use. This began with addressing the problem of complicated state, either by separating it and managing it carefully (Object-oriented programming), or seeking to eliminate it entirely (functional programming.) Next, languages began to favor strict static types with explicit casts. In some cases, memory management also became governed by the type system with techniques like borrow checking. The goal became to make representing invalid states impossible at compile time.
+
+On the other hand, mathematicians were having, in a way, the opposite problem. Correctness had always been front and center in mathematics, but as proofs moved further away from short paragraphs using a few axioms to papers with dozens of pages relying on heavy theorems, it introduced a delicate chain of trust. Proofs were peer reviewed by experts in the field, usually because they were the only ones that could deeply understand them, and then published as truth for others to use. Because there was no way to quickly and rigorously verify that a proof was sound, it became increasingly common for proofs with subtle errors to be published, accepted as fact, and not noticed or corrected for years. This happened with the four colour theorem and the Schroder-Bernstein theorem, just to name a few.
+
+Idris2 and Coq are both dependently typed programming languages that are powerful enough for theorem proving. The former came as a natural extension to the trend of programmers increasingly wanting to verify their automated tools were correct, and the latter came from mathematicians' needs to have automated tools to help them verify correctness. 
+
