@@ -29,3 +29,10 @@ A "step" or "state transition" is a 2-tuple of scheduler states `(S1, S2)` over 
 
 ### Definition 4
 A "trace" between two scheduler states `S1` and `S2` is a witness of `S1 Step* S2`, where `Step*` is the transitive-reflexive closure of the step relation.
+
+### Definition 5
+a scheduler state `S` is "reachable" from a starting scheduler state `S0` if there is a trace from `S0` to `S`. The set `Reach(S0)` are all states that are reachable from `S0`.
+
+### Definition 6
+A scheduler state `S` is "terminal" if there does not exist an `S'` such that `S Step S'` holds.
+
