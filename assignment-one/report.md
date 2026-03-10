@@ -1,17 +1,31 @@
-# Verifying a Simple DAG Scheduler in Idris2 and in Coq
+# Verifying a Simple DAG Scheduler
 
 ###### (TODO: My ID here) - COMP440 Assignment One
 
 ---
 
-## Introduction
+## Aims and Objectives
+The objective of this report is to model and prove the termination of a directed acyclic graph (DAG) scheduler in Idris2 and Coq (the precise theorem will be stated at the end of the next section). The proof will then be used as a vehicle to compare both languages by considering their available tooling (specifically interactive editing features, content of the standard library, and package managers), approaches to encoding propositions and proofs, as well as their methods for judging these propositions. Finally, a subjective account of both languages' developer experience will be given.
 
-On August 14th 2003, an estimated fifty-five million people in the Northeasten United States were affected by what was at the time the second most widespread power outage in history. The incident lasted until the sixteenth of August, and during that time, transportation, communication, and water infrastructure were also affected.<br>
-The chain of events leading up to the outage was started by a race condition in some energy monitoring software, which deprived system operators of critical information for over an hour.
-The Northeast blackout is a good example to illustrate the dangers of subtle logic errors in computer programs, but it is far from the only one. Up until recently, correctness of computer programs was mostly checked with unit and fuzz tests. That is, executing the program with lots of random inputs, and making sure that all the outputs are sensible. Correctness was important, but programmers had to juggle several other factors: performance, code maintainability, and user-friendliness each demanded attention too. As such, formal methods were generally seen as too expensive and complicated to be worthwhile. However, as programs moved from simple, imperative routines to massive systems that no individual human could comprehend, programming paradigms started to shift as well. Programs that were state-heavy or relied on parallel / concurrent execution began to exhibit subtle bugs that were hard to reliably reproduce or catch with standard testing. Language features that were convenient for smaller programs, such as implicit type conversion and nullability, started introducing elusive problems in larger ones.
-Therefore, programmers increasingly realized they could no longer rely on discipline alone: correctness had to be built into the tools they use. This began with addressing the problem of complicated state, either by separating it and managing it carefully, or seeking to eliminate it entirely. Next, languages began to favor strict static types with explicit casts. In some cases, memory management also became governed by the type system with techniques like borrow checking. The goal became to make representing invalid states impossible at compile time.
+## Preliminary Models, Definitions, and Proofs
 
-On the other hand, mathematicians were having, in a way, the opposite problem. Correctness had always been front and center in mathematics, but as proofs moved further away from short paragraphs using a few axioms to papers with dozens of pages relying on heavy theorems, it introduced a delicate chain of trust. Proofs were peer reviewed by experts in the field, usually because they were the only ones that could deeply understand them, and then published as truth for others to use. Because there was no way to quickly and rigorously verify that a proof was sound, it became increasingly common for proofs with subtle errors to be published, accepted as fact, and not noticed or corrected for years. This happened with the four colour theorem (twice!) and the Schroder-Bernstein theorem, just to name a few. In fact, the four colour theorem was finally proven in 1976, with the aid of a computer.
+### Definition 1
+A "Scheduler state" over a directed graph `G = (V, E)` is comprised of four sets of tasks that partition `V`:
+  1. The set of finished tasks
+  2. The set of ready tasks
+  3. The set of pending tasks
+  4. The set of running tasks, which may contain at most one element.
 
-Idris2 and Coq are both dependently typed programming languages that are powerful enough for theorem proving. The former came as a natural extension to the trend of programmers increasingly wanting to verify their automated tools were correct, and the latter came from mathematicians' needs to have automated tools to help them verify correctness. 
+For brevity, this construct may ocasionally referred to as a "scheduler."
 
+### Definition 2
+A scheduler state over `G = (V, E)` is "well formed" if for every task `t` in the "finished" set, every element `d` such that `dEt` holds is in the "finished" set.
+
+### Definiton 3
+A "step" or "state transition" is a 2-tuple of scheduler states `(S1, S2)` over a directed graph `G = (T, E)` such that exactly one of the following conditions hold:
+  1. The set of "running" tasks in `S1` is empty, and there exists a task `t` such that `t` is in the "ready" set of `S1` and the "running" set of `S2`.
+  2. There exists a task `t` such that `t` is in the "running" set of `S1`, `t` is in the "finished" set of `S2`, and the "running" set of `S2` is empty.
+  3. There exists a `t` such that `t` is in the "pending" set of `S1`, `t` is in the "ready" set of `S2`, and for every `d` in `T`, if the relation `dEt` holds, `d` is in the "finished" set of `S1`.
+
+### Definition 4
+A "trace" between two scheduler states `S1` and `S2` is a witness of `S1 Step* S2`, where `Step*` is the transitive-reflexive closure of the step relation.
