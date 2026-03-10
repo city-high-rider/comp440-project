@@ -10,7 +10,7 @@ The objective of this report is to model and prove the termination of a directed
 ## Preliminary Models, Definitions, and Proofs
 
 ### Definition 1
-A "Scheduler state" over a directed graph `G = (V, E)` is comprised of four sets of tasks that partition `V`:
+A "Scheduler state" over a directed graph `G = (V, E)` is comprised of four sets of tasks that are pairwise disjoint and cover `V`:
   1. The set of finished tasks
   2. The set of ready tasks
   3. The set of pending tasks
