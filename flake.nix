@@ -6,22 +6,7 @@
   };
   outputs = { nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
-        edit-report = pkgs.writeShellApplication {
-          name = "edit-report";
-          runtimeInputs = with pkgs; [
-            pandoc
-            python314Packages.weasyprint
-            mupdf
-            entr
-          ];
-          text = ''
-            echo "$1" | entr -n pandoc --pdf-engine=weasyprint "$1" -o "$2" &
-            echo "$2" | entr -n pkill -HUP mupdf &
-            mupdf "$2" 
-          '';
-        };
+      let pkgs = nixpkgs.legacyPackages.${system};
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
@@ -67,7 +52,11 @@
             })
             vscodium
             idris2Packages.idris2Lsp
-            edit-report
+            typst
+            typst-live
+            typstyle
+            tinymist
+            # edit-report
           ];
 
           shellHook = "echo Entered Comp Devshell...";
