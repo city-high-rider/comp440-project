@@ -10,7 +10,7 @@ The objective of this report is to model and prove the termination of a directed
 ## Preliminary Models, Definitions, and Proofs
 
 ### Definition 1
-A "Scheduler state" over a directed graph `G = (V, E)` is comprised of four sets of tasks that are pairwise disjoint and cover `V`:
+A "Scheduler state" over a directed acyclic graph `G = (V, E)` is comprised of four sets of tasks that are pairwise disjoint and cover `V`:
   1. The set of finished tasks
   2. The set of ready tasks
   3. The set of pending tasks
@@ -39,3 +39,5 @@ a scheduler state `S` is "reachable" from a starting scheduler state `S0` if the
 ### Definition 7
 A scheduler state `S` is "terminal" if there does not exist an `S'` such that `S Step S'` holds.
 
+### Theorem (Termination)
+For any well-founded scheduler state `S0` there exists a finite trace to some terminal state `S`. 
