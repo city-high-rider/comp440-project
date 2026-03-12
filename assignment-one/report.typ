@@ -37,5 +37,9 @@ a scheduler state $S$ is "reachable" from a starting scheduler state $S_0$ if th
 === Definition 7
 A scheduler state $S$ is "terminal" if there does not exist an $S'$ such that $S "Step" S'$ holds.
 
+=== Definition 8
+The measure $mu$ of a state $S$ is a function $mu : SS -> NN$ where $mu(S) = |E| + 2|R| +3|P|$
+
+
 === Theorem (Termination)
 For any well-founded scheduler state $S_0$ there exists a finite trace to some terminal state $S$. 
