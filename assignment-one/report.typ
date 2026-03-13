@@ -60,10 +60,10 @@ The proof is by contradiction. Suppose that we cannot find an enabled task in $P
 === Theorem 1 (Terminal and finished states)
 A state is finished iff it is terminal.
 
-=== Proof of theorem 1
-==== $->$ direction (if a state is finished, then it is terminal.)
+==== Proof of theorem 1
+===== $->$ direction (if a state is finished, then it is terminal.)
 In a finished state $S$ over $G = (T, E)$, every $t$ in $T$ is in $F$. Since $P, R, E, F$ are pairwise disjoint and cover $T$, this means that the sets $P, R, E$ are all empty. Therefore, no steps are possible, and thus the finished state is terminal.
-==== $<-$ direction (if a state is terminal, then it is finished.)
+===== $<-$ direction (if a state is terminal, then it is finished.)
 We will do the contrapositive proof: if a state is not finished, then it is not terminal. Consider a non-finished state $S$. Then, one of the following must hold:
   + $E != emptyset$
   + $R != emptyset$
@@ -71,3 +71,25 @@ We will do the contrapositive proof: if a state is not finished, then it is not 
 If $E != emptyset$, then there is some $e in E$. Therefore, a step to $S' = (F union {e}, R, P, emptyset)$ is possible, and $S$ is non-terminal.
 If $R != emptyset and E = emptyset$, then there is some $r in R$. Therefore, a step to $S' = (F, R - {r}, P, {r})$ is possible, thus $S$ is non-terminal.
 If $P != emptyset and R = emptyset and E = emptyset$, there must be some enabled $p in P$ by lemma 2. Therefore, a step to $S' = (F, {p}, P - {p}, emptyset)$ is possible, thus $S$ is non-terminal. $qed$
+
+=== Lemma 3
+$mu(S) = 0$ iff $S$ is finished. 
+
+==== Proof of lemma 3
+===== $<-$ direction (if a state is finished, then the measure is zero)
+By definition, if $S = (F, P, R, E)$ over $G = (T, E)$ is finished, every task is finished. Because $F, P, R, E$ are pairwise disjoint and cover $T$, $P, R, E$ must all be empty. Therefore, $mu(S) = |E| + 2|R| +3|P| = 0$.
+===== $->$ direction (if the measure is zero, then the state is finished)
+if $mu(S) = |E| + 2|R| +3|P| = 0$, this means all the cardinalities must be zero, as cardinalities are non-negative. Since $|E| = 0, |R| = 0, |P| = 0$, this means $E = R = P = emptyset$. Because $F, P, R, E$ are pairwise disjoint and cover $T$, this means $forall t in T [t in F]$. Therefore, $S$ is finished. $qed$
+
+=== Lemma 4
+If $S_0 "step" S_1$ holds, $mu(S_0) > mu(S_1)$
+
+==== Proof of lemma 4
+Since $S_0 "step" S_1$ holds, one of the following must be true:
+  + $E_1 = emptyset and exists t in T [t in R_1 and t in E_2]$
+  + $E_2 = emptyset and exists t in T [t in E_1 and t in F_2] $
+  + $exists t in T [t in R_2 and t "is enabled in" S_1]$
+In case 1, $mu(S_1) - mu(S_0) = 1 + 2*(|R| - 1) + 3|P| - [0 + 2*(|R|) + 3|P|] = -1$ 
+In case 2, $mu(S_1) - mu(S_0) = 0 + 2|R| + 3|P| - [1 + 2|R| + 3|P|] = -1$
+In case 3, $mu(S_1) - mu(S_0) = |E| + 2*(|R| + 1) + 3*(|P| - 1) - [|E| + 2|R| + 3|P|] = -1$
+In each case, $mu(S_1) - mu(S_0) = -1$. Therefore, in each case, $mu(S_0) > mu(S_1) qed$
