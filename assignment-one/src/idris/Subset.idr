@@ -45,4 +45,7 @@ ssEqTrans (assb, bssa) (bssc, cssb) =
   in
   (assc, cssa)
 
+public export
+Disjoint : List a -> List a -> Type
+Disjoint xs ys = All (\x => Not (x `Elem`ys)) xs
 
