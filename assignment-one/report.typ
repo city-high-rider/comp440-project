@@ -106,3 +106,67 @@ Suppose that for every scheduler state whose measure is equal to $n$ there exist
 
 We have shown that for every non-terminal scheduler state with an arbitrarily large measure, there is a finite trace to a finished state. Now consider a starting state. It is either terminal, or non-terminal. If it is terminal, then we have a trivial trace to a finished state, that is, itself. If it is non-terminal, then by the induction proof above, we can find a finite trace to a finished state. $qed$ 
 
+== Writing the Proofs in Idris2
+
+One complication with encoding the above proofs in Idris2 is the absence of a `Set` type in the standard library which is useful for theorem proving. The provided sets (found in `Data.SortedSet`) are instead intended for use in general programming, and thus do not expose any set-related propositions, like membership, equality, or a subset relation. We will first have to define this ourselves.
+
+The simplest set-like structure available to us is the inductively defined `List` type. We will use this as a base and define the following types:
+```idris
+-- Proof that x is in xs
+data Elem : a -> List a -> Type where
+  Here : Elem x (x :: xs)
+  KeepLooking : Elem x rest -> Elem x (something::rest)
+
+-- Proof that a predicate is true of all the elements in a list
+data All : (pred : a -> Type) -> List a -> Type where
+  VacuouslyTrue : All pred []
+  (::) : {x : a} -> pred x -> All pred xs -> All pred (x::xs)
+
+-- If p is true of every element in es, and for any e, p of e implies p' of e, then p' is true of every element in es.
+propImplies : {prem1, prem2 : a -> Type} -> ((e : a) -> prem1 e -> prem2 e) -> All prem1 es -> All prem2 es
+propImplies f VacuouslyTrue = VacuouslyTrue
+propImplies f (cur :: rest) = f _ cur :: propImplies f rest
+```
+We can then use these to define a subset equality relation between two lists, and prove that it is indeed an equivalence relation.
+```idris
+Subset : List a -> List a -> Type
+Subset xs ys = All (`Elem`ys) xs
+
+SsEq : List a -> List a -> Type 
+SsEq a b = (a `Subset` b, b `Subset` a) 
+
+extractPrf : x `Elem` xs -> All prop xs -> prop x
+extractPrf Here (y :: _) = y
+extractPrf (KeepLooking y) (_ :: w) = extractPrf y w
+
+-- Subset reflexivity
+listContainsItsContents : {list : _} -> All (`Elem`list) list
+listContainsItsContents {list = []} = VacuouslyTrue
+listContainsItsContents {list = (x :: xs)} =
+  let
+    ind = listContainsItsContents {list = xs}
+    xIsHere : x `Elem` (x::xs) = Here
+    ifTheyreInHereTheyreInTheSuperset = propImplies (\_ => KeepLooking) ind
+  in
+  xIsHere :: ifTheyreInHereTheyreInTheSuperset
+
+ssEqRefl : {a : _} -> a `SsEq` a
+ssEqRefl = (listContainsItsContents, listContainsItsContents)
+
+ssEqSym : a `SsEq` b -> b `SsEq` a
+ssEqSym (x, y) = (y, x)
+
+ssEqTrans : {a,b,c : _} -> a `SsEq` b -> b `SsEq` c -> a `SsEq` c
+ssEqTrans (assb, bssa) (bssc, cssb) =
+  let
+    assc = propImplies (\_, einb => extractPrf einb bssc) assb
+    cssa = propImplies (\_, einb => extractPrf einb bssa) cssb
+  in
+  (assc, cssa)
+```
+Next, we will need to model a directed acyclic graph. Traditional graphs (that is, a set of vertices and an adjacency relation) are difficult to model ergonomically in Idris because of the aforementioned lack of sets, and also because they are not inductively defined. Instead, we can use the fact that our dependency graph must be acyclic to construct it inductively by starting with an empty graph and adding sources (nodes with no incoming edges.) Not needing to prove acyclicity will make the code easier to work with.
+```idris
+data DAG : List Task -> Type where
+  Empty : DAG []
+  AddTask : (t : Task) -> (deps : List Task) -> deps `Subset` tasks -> DAG tasks -> DAG (t :: tasks)
+```
