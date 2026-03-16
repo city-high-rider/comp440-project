@@ -3,23 +3,26 @@ module Trace
 import All
 import Data.List
 import Elem
+import Subset
 import Task
 
 %default total
 
 public export
-record Scheduler where
+record Scheduler (dg : DAG ts) where
   constructor MkScheduler
   pending : List Task
   ready : List Task
   running : Maybe Task
   finished : List Task
 
+Finished : {ts : _} -> {dg : DAG ts} -> Scheduler dg -> Type
+Finished s = (s.pending = [], s.ready = [], s.running = Nothing, s.finished `SsEq` ts)  
+
 public export
-data Step : Graph -> Scheduler -> Scheduler -> Type where
+data Step : Scheduler dg -> Scheduler dg -> Type where
   Start :
-    {depGraph : Graph} ->
-    (current : Scheduler) ->
+    (current : Scheduler dg) ->
     (doThis : Task) ->
     (prfReady : doThis `Elem` current.ready) ->
     (prfIdle : current.running = Nothing) ->
@@ -28,11 +31,10 @@ data Step : Graph -> Scheduler -> Scheduler -> Type where
           (delete doThis current.ready)
           (Just doThis)
           current.finished
-    in Step depGraph current next
+    in Step current next
 
   Complete :
-    {depGraph : Graph} ->
-    (current : Scheduler) ->
+    (current : Scheduler dg) ->
     (finishThis : Task) ->
     (prfRun : current.running = Just finishThis) ->
     let next = MkScheduler
@@ -40,23 +42,56 @@ data Step : Graph -> Scheduler -> Scheduler -> Type where
           current.ready
           Nothing
           (finishThis :: current.finished)
-    in Step depGraph current next
+    in Step current next
 
   Enqueue :
-    {depGraph : Graph} ->
-    (current : Scheduler) ->
-    (queueThis : Task) ->
-    (prfPending : Elem queueThis current.pending) ->
-    (prfDeps : All (\d => Elem d current.finished) (deps depGraph queueThis)) ->
+    {dg : DAG ts} ->
+    (current : Scheduler dg) ->
+    (readyThis : Task) ->
+    (inGraph : readyThis `Elem` ts) ->
+    (pending : readyThis `Elem` current.pending) ->
+    (depsFinished : All (`Elem` current.finished) (deps dg readyThis inGraph)) -> 
     let next = MkScheduler
-          (delete queueThis current.pending)
-          (queueThis :: current.ready)
+          (delete readyThis current.pending)
+          (readyThis :: current.ready)
           current.running
           current.finished
-    in Step depGraph current next
-          
+    in Step current next
+
+Terminal : {dg : _} -> Scheduler dg -> Type
+Terminal state = {s : Scheduler dg} -> Not (Step state s)
 
 public export
-data Trace : Graph -> Scheduler -> Scheduler -> Type where
-  StartHere : (initialState : Scheduler) -> Trace g initialState initialState
-  WithStep : Step depGraph a b -> Trace depGraph b c -> Trace depGraph a c
+data Trace : Scheduler dg -> Scheduler dg -> Type where
+  StartHere : (initialState : Scheduler dg) -> Trace initialState initialState
+  WithStep : Step a b -> Trace b c -> Trace a c
+
+total
+elemInEmptyImpossible : Elem _ list -> list = [] -> Void
+elemInEmptyImpossible Here Refl impossible
+elemInEmptyImpossible (KeepLooking x) Refl impossible
+
+total
+nothingNotJust : Nothing = Just _ -> Void
+nothingNotJust Refl impossible
+
+total
+finishedIsTerminal : (fs : Scheduler dg) -> Finished fs -> Terminal fs
+finishedIsTerminal _ (_, readyEmpty, _, _) (Start _ _ elemReady _) = elemInEmptyImpossible elemReady readyEmpty
+finishedIsTerminal _ (_, _, runningEmpty, _) (Complete _ _ runningFull) =
+  let
+    nothingIsSomething = trans (sym runningEmpty) runningFull
+  in
+  nothingNotJust nothingIsSomething
+finishedIsTerminal fs (pendingEmpty, _, _, _) (Enqueue fs _ _ elemPending _) = elemInEmptyImpossible elemPending pendingEmpty
+
+total
+terminalMeansNoRunning : (ts : Scheduler dg) -> Terminal ts -> ts.running = Nothing
+terminalMeansNoRunning (MkScheduler _ _ Nothing _) _ = Refl
+terminalMeansNoRunning (MkScheduler pending ready (Just x) finished) stepToVoid =
+  let
+    stepComplete = Complete (MkScheduler pending ready (Just x) finished) x Refl 
+    void = stepToVoid stepComplete
+  in
+  absurd void
+
