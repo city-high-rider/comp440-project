@@ -2,17 +2,18 @@ module Task
 
 import All
 import Elem
+import Decidable.Equality
+import Data.Nat
 import Subset
 
 %default total
 
 export
-data Task : Type where
-  MkTask : Nat -> Task
+Task : Type
+Task = Nat
 
-export
-Eq Task where
-  (MkTask a) == (MkTask b) = a == b
+export total
+DecEq Task
 
 public export
 data DAG : List Task -> Type where

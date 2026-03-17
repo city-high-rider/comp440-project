@@ -3,6 +3,7 @@ module Trace
 import All
 import Data.List
 import Elem
+import Decidable.Equality
 import Subset
 import Task
 
@@ -54,6 +55,33 @@ total
 coverMaintainOnComplete : {ts : List Task} -> {dg : DAG ts} -> {fThis : Task} -> (s : Scheduler dg) -> (notIdlePrf : s.running = Just fThis) -> [s.pending, s.ready, [], fThis :: s.finished] `Cover` ts 
 coverMaintainOnComplete s prf = propImplies (\e => completeCoverHelper fThis s prf e) s.cover
 
+total
+notInHeadInTail : (notHead : Not (elem = first)) -> (inList : elem `Elem` (first::rest)) -> elem `Elem` rest
+notInHeadInTail notHead Here = absurd (notHead Refl)
+notInHeadInTail _ (KeepLooking x) = x
+
+total
+startCoverHelper : {runThis : Task} -> {rest : List Task} -> (s : Scheduler dg) -> s .ready = runThis :: rest -> s .running = Nothing -> (e : Task) -> One (\subset => Elem e subset) [s .pending, s .ready, maybeToList (s .running), s .finished] -> One (\subset => Elem e subset) [s .pending, rest, [runThis], s .finished]
+startCoverHelper s _ _ _ (ThisOne s.pending prf) = (ThisOne s.pending prf)
+startCoverHelper s prfReady _ e (Further (ThisOne s.ready prf)) =
+  case e `decEq` runThis of
+       (Yes Refl) => Further (Further (ThisOne [e] Here))
+       (No contra) =>
+        let
+          prf' = replace prfReady {p = Elem e} prf
+        in
+        Further (ThisOne rest (notInHeadInTail contra prf'))
+startCoverHelper _ _ prfIdle e (Further (Further (ThisOne (maybeToList s.running) prf))) =
+  let
+    elemOfEmpty = replace prfIdle {p = Elem e . maybeToList} prf
+  in
+  absurd (elemInEmptyImpossible elemOfEmpty Refl)
+startCoverHelper s prfReady prfIdle e (Further (Further (Further (ThisOne s.finished prf)))) = Further (Further (Further (ThisOne s.finished prf)))
+
+total
+coverMaintainOnStart : {ts, rest : List Task} -> {runThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (idlePrf : s.running = Nothing) -> (readyPrf : s.ready = runThis::rest) -> [s.pending, rest, maybeToList (Just runThis), s.finished] `Cover` ts
+coverMaintainOnStart s idlePrf readyPrf = propImplies (\e => startCoverHelper s readyPrf idlePrf e) s.cover
+
 public export
 data Step : Scheduler dg -> Scheduler dg -> Type where
   Complete :
@@ -67,20 +95,18 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
     (finishThis :: current.finished)
     (coverMaintainOnComplete current prfRun))
 
-{-
-
   Start :
     (current : Scheduler dg) ->
-    (doThis : Task) ->
-    (prfReady : doThis `Elem` current.ready) ->
+    (prfReady : current.ready = first :: rest) ->
     (prfIdle : current.running = Nothing) ->
-    let next = MkScheduler
-          current.pending
-          (delete doThis current.ready)
-          (Just doThis)
-          current.finished
-    in Step current next
+    Step current (MkScheduler
+      current.pending
+      (rest)
+      (Just first)
+      current.finished
+      (coverMaintainOnStart current prfIdle prfReady))
 
+{-
   Enqueue :
     {dg : DAG ts} ->
     (current : Scheduler dg) ->
