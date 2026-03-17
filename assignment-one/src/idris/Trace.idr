@@ -104,3 +104,12 @@ terminalMeansNotReady ts@(MkScheduler pending (x :: xs) running finished) stepTo
     stepStart = Start ts x Here notRunning 
   in
   absurd (stepToVoid stepStart)
+
+total
+terminalMeansNoPending : {dg : DAG ds} -> (ts : Scheduler dg) -> Terminal ts -> ts.pending = []
+terminalMeansNoPending (MkScheduler [] _ _ _) _ = Refl
+terminalMeansNoPending ts@(MkScheduler (x :: xs) ready running finished) stepToVoid = 
+  let
+    stepEnqueue = Enqueue ts x ?a Here ?b
+  in
+  absurd (stepToVoid stepEnqueue)
