@@ -88,9 +88,9 @@ finishedIsTerminal fs (pendingEmpty, _, _, _) (Enqueue fs _ _ elemPending _) = e
 total
 terminalMeansNoRunning : (ts : Scheduler dg) -> Terminal ts -> ts.running = Nothing
 terminalMeansNoRunning (MkScheduler _ _ Nothing _) _ = Refl
-terminalMeansNoRunning (MkScheduler pending ready (Just x) finished) stepToVoid =
+terminalMeansNoRunning ts@(MkScheduler _ _ (Just x) _) stepToVoid =
   let
-    stepComplete = Complete (MkScheduler pending ready (Just x) finished) x Refl 
+    stepComplete = Complete ts x Refl 
     void = stepToVoid stepComplete
   in
   absurd void
@@ -98,7 +98,7 @@ terminalMeansNoRunning (MkScheduler pending ready (Just x) finished) stepToVoid 
 total
 terminalMeansNotReady : (ts : Scheduler dg) -> Terminal ts -> ts.ready = []
 terminalMeansNotReady (MkScheduler _ [] _ _) _ = Refl
-terminalMeansNotReady ts@(MkScheduler pending (x :: xs) running finished) stepToVoid =
+terminalMeansNotReady ts@(MkScheduler _ (x :: xs) _ _) stepToVoid =
   let
     notRunning = terminalMeansNoRunning ts stepToVoid
     stepStart = Start ts x Here notRunning 
