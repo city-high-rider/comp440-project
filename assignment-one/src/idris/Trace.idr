@@ -8,6 +8,11 @@ import Task
 
 %default total
 
+public export total
+maybeToList : Maybe a -> List a
+maybeToList Nothing = []
+maybeToList (Just x) = [x]
+
 public export
 record Scheduler (dg : DAG ts) where
   constructor MkScheduler
@@ -15,12 +20,55 @@ record Scheduler (dg : DAG ts) where
   ready : List Task
   running : Maybe Task
   finished : List Task
+  cover : [pending, ready, maybeToList running, finished] `Cover` ts
 
+total
 Finished : {ts : _} -> {dg : DAG ts} -> Scheduler dg -> Type
 Finished s = (s.pending = [], s.ready = [], s.running = Nothing, s.finished `SsEq` ts)  
 
+{-
+public export
+data One : (pred : a -> Type) -> List a -> Type where
+  ThisOne : (x : a) -> pred x -> One pred (x::rest)
+  Further : One pred xs -> One pred (x::xs)
+-}
+
+total
+elemSingletonEq : a `Elem` [b] -> a = b
+elemSingletonEq Here = Refl
+elemSingletonEq (KeepLooking _) impossible
+
+total
+completeCoverHelper : (fThis : Task) -> (s : Scheduler dg) -> (notIdle : s.running = Just fThis) -> (e : Task) -> One (\subset => Elem e subset) [s .pending, s .ready, maybeToList (s .running), s .finished] -> One (\subset => Elem e subset) [s .pending, s .ready, [], (fThis :: s .finished)]
+completeCoverHelper _ _ _ _ (ThisOne s.pending prf) = ThisOne s.pending prf
+completeCoverHelper _ _ _ _ (Further (ThisOne s.ready prf)) = Further (ThisOne s.ready prf)
+completeCoverHelper fThis s notIdle e (Further (Further (ThisOne (maybeToList s.running) prf))) =
+  let
+    prf' = replace notIdle {p = Elem e . maybeToList} prf
+    eIsFThis = elemSingletonEq prf'
+  in
+  rewrite (sym eIsFThis) in Further (Further (Further (ThisOne (e :: s.finished) Here)))
+completeCoverHelper fThis s _ _ (Further (Further (Further (ThisOne s.finished prf)))) = Further (Further (Further (ThisOne (fThis :: s.finished) (KeepLooking prf))))
+
+total
+coverMaintainOnComplete : {ts : List Task} -> {dg : DAG ts} -> {fThis : Task} -> (s : Scheduler dg) -> (notIdlePrf : s.running = Just fThis) -> [s.pending, s.ready, [], fThis :: s.finished] `Cover` ts 
+coverMaintainOnComplete s prf = propImplies (\e => completeCoverHelper fThis s prf e) s.cover
+
 public export
 data Step : Scheduler dg -> Scheduler dg -> Type where
+  Complete :
+  (current : Scheduler dg) ->
+  (finishThis : Task) ->
+  (prfRun : current.running = Just finishThis) ->
+  Step current (MkScheduler
+    current.pending
+    current.ready
+    Nothing
+    (finishThis :: current.finished)
+    (coverMaintainOnComplete current prfRun))
+
+{-
+
   Start :
     (current : Scheduler dg) ->
     (doThis : Task) ->
@@ -31,17 +79,6 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
           (delete doThis current.ready)
           (Just doThis)
           current.finished
-    in Step current next
-
-  Complete :
-    (current : Scheduler dg) ->
-    (finishThis : Task) ->
-    (prfRun : current.running = Just finishThis) ->
-    let next = MkScheduler
-          current.pending
-          current.ready
-          Nothing
-          (finishThis :: current.finished)
     in Step current next
 
   Enqueue :
@@ -65,11 +102,6 @@ public export
 data Trace : Scheduler dg -> Scheduler dg -> Type where
   StartHere : (initialState : Scheduler dg) -> Trace initialState initialState
   WithStep : Step a b -> Trace b c -> Trace a c
-
-total
-elemInEmptyImpossible : Elem _ list -> list = [] -> Void
-elemInEmptyImpossible Here Refl impossible
-elemInEmptyImpossible (KeepLooking x) Refl impossible
 
 total
 nothingNotJust : Nothing = Just _ -> Void
@@ -113,3 +145,4 @@ terminalMeansNoPending ts@(MkScheduler (x :: xs) ready running finished) stepToV
     stepEnqueue = Enqueue ts x ?a Here ?b
   in
   absurd (stepToVoid stepEnqueue)
+-}

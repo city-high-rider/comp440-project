@@ -11,3 +11,8 @@ data Elem : a -> List a -> Type where
 
 test : Elem 2 [0,1,2,3]
 test = KeepLooking (KeepLooking Here)
+
+public export total
+elemInEmptyImpossible : Elem _ list -> list = [] -> Void
+elemInEmptyImpossible Here Refl impossible
+elemInEmptyImpossible (KeepLooking x) Refl impossible
