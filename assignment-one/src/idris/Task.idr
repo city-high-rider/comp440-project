@@ -19,7 +19,11 @@ data DAG : List Task -> Type where
   Empty : DAG []
   AddTask : (t : Task) -> (deps : List Task) -> deps `Subset` tasks -> DAG tasks -> DAG (t :: tasks)
 
-public export
-deps : DAG ts -> (t : Task) -> t `Elem` ts -> List Task 
-deps (AddTask t xs _ _) t Here = xs
-deps (AddTask _ _ _ rest) t (KeepLooking prf) = deps rest t prf
+public export total
+deps : {ts : List Task} -> DAG ts -> (t : Task) -> t `Elem` ts -> (deps : List Task ** All (`Elem`ts) deps)
+deps (AddTask t ds ssPrf _) t Here = (ds ** propImplies (\_ => KeepLooking) ssPrf)
+deps (AddTask _ _ _ subGraph) t (KeepLooking y) =
+  let
+    (deps ** prf) = deps subGraph t y
+  in
+  (deps ** propImplies (\_ => KeepLooking) prf)
