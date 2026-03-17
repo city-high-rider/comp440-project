@@ -95,3 +95,12 @@ terminalMeansNoRunning (MkScheduler pending ready (Just x) finished) stepToVoid 
   in
   absurd void
 
+total
+terminalMeansNotReady : (ts : Scheduler dg) -> Terminal ts -> ts.ready = []
+terminalMeansNotReady (MkScheduler _ [] _ _) _ = Refl
+terminalMeansNotReady ts@(MkScheduler pending (x :: xs) running finished) stepToVoid =
+  let
+    notRunning = terminalMeansNoRunning ts stepToVoid
+    stepStart = Start ts x Here notRunning 
+  in
+  absurd (stepToVoid stepStart)
