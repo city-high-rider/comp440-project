@@ -1,6 +1,8 @@
 module Remove
 
 import Elem
+import Subset
+import All
 
 public export total
 remove : (xs : List a) -> x `Elem` xs -> List a
@@ -17,3 +19,12 @@ notRemovedStillThere (KeepLooking x) (KeepLooking y) contra =
     ind = notRemovedStillThere x y contra
   in
   KeepLooking ind
+
+public export total
+removeFromSubsetStillSubset : {xs, ys : List a} -> {prf : e `Elem` xs} -> xs `Subset` ys -> (remove xs prf) `Subset` ys
+removeFromSubsetStillSubset {prf = Here} (_ :: y) = y
+removeFromSubsetStillSubset {prf = (KeepLooking y)} (x :: z) =
+  let
+    ind = removeFromSubsetStillSubset {prf = y} z
+  in
+  x :: ind

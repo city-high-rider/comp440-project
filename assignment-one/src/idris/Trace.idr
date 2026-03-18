@@ -4,6 +4,7 @@ import All
 import Data.List
 import Elem
 import Decidable.Equality
+import Remove
 import Subset
 import Task
 
@@ -76,6 +77,8 @@ total
 coverMaintainOnStart : {ts, rest : List Task} -> {runThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (idlePrf : s.running = Nothing) -> (readyPrf : s.ready = runThis::rest) -> [s.pending, rest, maybeToList (Just runThis), s.finished] `Cover` ts
 coverMaintainOnStart s idlePrf readyPrf = propImplies (\e => startCoverHelper s readyPrf idlePrf e) s.cover
 
+{-
+
 total
 depInDag : (pending = first :: rest) -> pending `Subset` ts -> first `Elem` ts
 depInDag prf ss =
@@ -106,6 +109,8 @@ total
 coverMaintainOnEnqueue : {ts, rest : List Task} -> {readyThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (pendingPrf : s.pending = readyThis :: rest) -> [rest, (readyThis :: s.ready), (maybeToList s.running), s.finished] `Cover` ts
 coverMaintainOnEnqueue s pendingPrf = propImplies (\e => enqueueCoverHelper s pendingPrf e) s.cover
 
+-}
+
 public export
 data Step : Scheduler dg -> Scheduler dg -> Type where
   Complete :
@@ -135,16 +140,18 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
   Enqueue :
     {dg : DAG ts} ->
     (current : Scheduler dg) ->
-    (pending : current.pending = readyThis :: rest) ->
-    (depsFinished : All (`Elem` current.finished) (deps' dg readyThis (depInDag pending current.pendingAreDeps))) -> 
+    (readyThis : Task) ->
+    (pending : readyThis `Elem` current.pending) ->
+    (depsFinished : All (`Elem` current.finished) (deps' dg readyThis (extractPrf pending current.pendingAreDeps))) -> 
     Step current (MkScheduler
-      rest
+      (remove current.pending pending)
       (readyThis :: current.ready)
       current.running
       current.finished
-      (coverMaintainOnEnqueue current pending)
-      (removePendingStillSubset pending current.pendingAreDeps))
+      ?cover
+      ?subset)
 
+{-
 
 Terminal : {dg : _} -> Scheduler dg -> Type
 Terminal state = {s : Scheduler dg} -> Not (Step state s)
@@ -204,3 +211,15 @@ terminalMeansNoPending ts@(MkScheduler (onePending :: rest) ready running finish
     step = Enqueue ts hasPending ?depsFinished
   in
   absurd (stepToVoid step)
+
+total
+terminalMeansAllFinished : {ds : List Task} -> {dg : DAG ds} -> (ts : Scheduler dg) -> Terminal ts -> ts.finished `SsEq` ds
+terminalMeansAllFinished ts stepToVoid =
+  let
+    noRunning = terminalMeansNoRunning ts stepToVoid
+    notReady = terminalMeansNotReady ts stepToVoid
+    noPending = terminalMeansNoPending ts stepToVoid
+  in
+  ?terminalMeansAllFinished_rhs
+
+-}
