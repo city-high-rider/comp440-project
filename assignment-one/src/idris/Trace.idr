@@ -77,39 +77,19 @@ total
 coverMaintainOnStart : {ts, rest : List Task} -> {runThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (idlePrf : s.running = Nothing) -> (readyPrf : s.ready = runThis::rest) -> [s.pending, rest, maybeToList (Just runThis), s.finished] `Cover` ts
 coverMaintainOnStart s idlePrf readyPrf = propImplies (\e => startCoverHelper s readyPrf idlePrf e) s.cover
 
-{-
-
 total
-depInDag : (pending = first :: rest) -> pending `Subset` ts -> first `Elem` ts
-depInDag prf ss =
-  let
-    ss' = replace prf {p = All (\arg => Elem arg ts)} ss
-  in
-  extractPrf Here ss'
-
-total
-removePendingStillSubset : (pending = first :: rest) -> pending `Subset` ts -> rest `Subset` ts
-removePendingStillSubset Refl x = smallerSubsetIsSubset x
-
-total
-enqueueCoverHelper : {readyThis : Task} -> {rest : List Task} -> (s : Scheduler dg) -> s .pending = readyThis :: rest -> (e : Task) -> One (\subset => Elem e subset) [s .pending, s .ready, maybeToList (s .running), s .finished] -> One (\subset => Elem e subset) [rest, (readyThis :: s .ready), maybeToList (s .running), s .finished]
-enqueueCoverHelper s prf e (ThisOne s.pending prf') =
+enqueueCoverHelper : {readyThis : Task} -> (s : Scheduler dg) -> (pending : Elem readyThis (s.pending)) -> (e : Task) -> One (\subset => Elem e subset) [s .pending, s .ready, maybeToList (s .running), s .finished] -> One (\subset => Elem e subset) [remove (s .pending) pending, (readyThis :: s .ready), maybeToList (s .running), s .finished]
+enqueueCoverHelper s pending e (ThisOne s.pending prf) =
   case e `decEq` readyThis of
-       (Yes Refl) => Further (ThisOne (e :: s .ready) Here)
-       (No contra) =>
-          let
-            prf'' = replace prf {p = Elem e} prf'
-          in
-          ThisOne rest (notInHeadInTail contra prf'')
-enqueueCoverHelper s _ _ (Further (ThisOne s.ready inReady)) = Further (ThisOne (readyThis :: s.ready) (KeepLooking inReady))
-enqueueCoverHelper s _ _ (Further (Further (ThisOne (maybeToList s.running) inRunning))) = Further (Further (ThisOne (maybeToList s.running) inRunning))
-enqueueCoverHelper s _ _ (Further (Further (Further (ThisOne s.finished inFinished)))) = Further (Further (Further (ThisOne s.finished inFinished)))
+       (Yes Refl) => Further (ThisOne (e :: s.ready) Here)
+       (No contra) => ThisOne (remove s.pending pending) (notRemovedStillThere prf pending contra)
+enqueueCoverHelper s _ _ (Further (ThisOne s.ready prf)) = Further (ThisOne (readyThis :: s.ready) (KeepLooking prf))
+enqueueCoverHelper s _ _ (Further (Further (ThisOne (maybeToList s.running) prf))) = Further (Further (ThisOne (maybeToList s.running) prf))
+enqueueCoverHelper s _ _ (Further (Further (Further (ThisOne s.finished prf)))) = Further (Further (Further (ThisOne s.finished prf)))
 
 total
-coverMaintainOnEnqueue : {ts, rest : List Task} -> {readyThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (pendingPrf : s.pending = readyThis :: rest) -> [rest, (readyThis :: s.ready), (maybeToList s.running), s.finished] `Cover` ts
-coverMaintainOnEnqueue s pendingPrf = propImplies (\e => enqueueCoverHelper s pendingPrf e) s.cover
-
--}
+coverMaintainOnEnqueue : {ts : List Task} -> {readyThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (pending : readyThis `Elem` s.pending) -> [(remove s.pending pending), (readyThis :: s.ready), (maybeToList s.running), s.finished] `Cover` ts
+coverMaintainOnEnqueue s pending = propImplies (\e => enqueueCoverHelper s pending e) s.cover
 
 public export
 data Step : Scheduler dg -> Scheduler dg -> Type where
@@ -148,10 +128,8 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       (readyThis :: current.ready)
       current.running
       current.finished
-      ?cover
-      ?subset)
-
-{-
+      (coverMaintainOnEnqueue current pending)
+      (removeFromSubsetStillSubset {prf = pending} current.pendingAreDeps))
 
 Terminal : {dg : _} -> Scheduler dg -> Type
 Terminal state = {s : Scheduler dg} -> Not (Step state s)
@@ -173,11 +151,11 @@ finishedIsTerminal fs (_, noReady, _, _) (Start fs ready _) =
     emptyEqNonempty = trans (sym noReady) ready
   in
   uninhabited emptyEqNonempty
-finishedIsTerminal fs (noPending, _, _, _) (Enqueue fs hasPending _) =
+finishedIsTerminal fs (noPending, _, _, _) (Enqueue fs readyThis hasPending _) =
   let
-    emptyEqNonempty = trans (sym noPending) hasPending
+    elemOfEmpty = replace noPending {p = Elem readyThis} hasPending
   in
-  uninhabited emptyEqNonempty
+  elemInEmptyImpossible elemOfEmpty Refl
 
 total
 terminalMeansNoRunning : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> Terminal s -> s.running = Nothing
@@ -200,6 +178,7 @@ terminalMeansNotReady s@(MkScheduler pending (oneReady :: rest) running finished
   in
   absurd (stepToVoid step)
 
+{-
 total
 terminalMeansNoPending : {ds : List Task} -> {dg : DAG ds} -> (ts : Scheduler dg) -> Terminal ts -> ts.pending = []
 terminalMeansNoPending (MkScheduler [] _ _ _ _ _) _ = Refl
