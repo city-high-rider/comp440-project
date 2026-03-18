@@ -10,6 +10,10 @@ Subset : List a -> List a -> Type
 Subset xs ys = All (`Elem`ys) xs
 
 public export total
+smallerSubsetIsSubset : (x :: xs) `Subset` ys -> xs `Subset` ys
+smallerSubsetIsSubset (_ :: z) = z
+
+public export total
 SsEq : List a -> List a -> Type 
 SsEq a b = (a `Subset` b, b `Subset` a) 
 

@@ -22,17 +22,11 @@ record Scheduler (dg : DAG ts) where
   running : Maybe Task
   finished : List Task
   cover : [pending, ready, maybeToList running, finished] `Cover` ts
+  pendingAreDeps : pending `Subset` ts
 
 total
 Finished : {ts : _} -> {dg : DAG ts} -> Scheduler dg -> Type
 Finished s = (s.pending = [], s.ready = [], s.running = Nothing, s.finished `SsEq` ts)  
-
-{-
-public export
-data One : (pred : a -> Type) -> List a -> Type where
-  ThisOne : (x : a) -> pred x -> One pred (x::rest)
-  Further : One pred xs -> One pred (x::xs)
--}
 
 total
 elemSingletonEq : a `Elem` [b] -> a = b
@@ -82,6 +76,36 @@ total
 coverMaintainOnStart : {ts, rest : List Task} -> {runThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (idlePrf : s.running = Nothing) -> (readyPrf : s.ready = runThis::rest) -> [s.pending, rest, maybeToList (Just runThis), s.finished] `Cover` ts
 coverMaintainOnStart s idlePrf readyPrf = propImplies (\e => startCoverHelper s readyPrf idlePrf e) s.cover
 
+total
+depInDag : (pending = first :: rest) -> pending `Subset` ts -> first `Elem` ts
+depInDag prf ss =
+  let
+    ss' = replace prf {p = All (\arg => Elem arg ts)} ss
+  in
+  extractPrf Here ss'
+
+total
+removePendingStillSubset : (pending = first :: rest) -> pending `Subset` ts -> rest `Subset` ts
+removePendingStillSubset Refl x = smallerSubsetIsSubset x
+
+total
+enqueueCoverHelper : {readyThis : Task} -> {rest : List Task} -> (s : Scheduler dg) -> s .pending = readyThis :: rest -> (e : Task) -> One (\subset => Elem e subset) [s .pending, s .ready, maybeToList (s .running), s .finished] -> One (\subset => Elem e subset) [rest, (readyThis :: s .ready), maybeToList (s .running), s .finished]
+enqueueCoverHelper s prf e (ThisOne s.pending prf') =
+  case e `decEq` readyThis of
+       (Yes Refl) => Further (ThisOne (e :: s .ready) Here)
+       (No contra) =>
+          let
+            prf'' = replace prf {p = Elem e} prf'
+          in
+          ThisOne rest (notInHeadInTail contra prf'')
+enqueueCoverHelper s _ _ (Further (ThisOne s.ready inReady)) = Further (ThisOne (readyThis :: s.ready) (KeepLooking inReady))
+enqueueCoverHelper s _ _ (Further (Further (ThisOne (maybeToList s.running) inRunning))) = Further (Further (ThisOne (maybeToList s.running) inRunning))
+enqueueCoverHelper s _ _ (Further (Further (Further (ThisOne s.finished inFinished)))) = Further (Further (Further (ThisOne s.finished inFinished)))
+
+total
+coverMaintainOnEnqueue : {ts, rest : List Task} -> {readyThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (pendingPrf : s.pending = readyThis :: rest) -> [rest, (readyThis :: s.ready), (maybeToList s.running), s.finished] `Cover` ts
+coverMaintainOnEnqueue s pendingPrf = propImplies (\e => enqueueCoverHelper s pendingPrf e) s.cover
+
 public export
 data Step : Scheduler dg -> Scheduler dg -> Type where
   Complete :
@@ -93,7 +117,8 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
     current.ready
     Nothing
     (finishThis :: current.finished)
-    (coverMaintainOnComplete current prfRun))
+    (coverMaintainOnComplete current prfRun)
+    current.pendingAreDeps)
 
   Start :
     (current : Scheduler dg) ->
@@ -104,22 +129,23 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       (rest)
       (Just first)
       current.finished
-      (coverMaintainOnStart current prfIdle prfReady))
+      (coverMaintainOnStart current prfIdle prfReady)
+      current.pendingAreDeps)
 
-{-
   Enqueue :
     {dg : DAG ts} ->
     (current : Scheduler dg) ->
-    (readyThis : Task) ->
-    (inGraph : readyThis `Elem` ts) ->
-    (pending : readyThis `Elem` current.pending) ->
-    (depsFinished : All (`Elem` current.finished) (deps dg readyThis inGraph)) -> 
-    let next = MkScheduler
-          (delete readyThis current.pending)
-          (readyThis :: current.ready)
-          current.running
-          current.finished
-    in Step current next
+    (pending : current.pending = readyThis :: rest) ->
+    (depsFinished : All (`Elem` current.finished) (deps' dg readyThis (depInDag pending current.pendingAreDeps))) -> 
+    Step current (MkScheduler
+      rest
+      (readyThis :: current.ready)
+      current.running
+      current.finished
+      (coverMaintainOnEnqueue current pending)
+      (removePendingStillSubset pending current.pendingAreDeps))
+
+{-
 
 Terminal : {dg : _} -> Scheduler dg -> Type
 Terminal state = {s : Scheduler dg} -> Not (Step state s)
