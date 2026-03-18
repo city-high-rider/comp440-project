@@ -145,7 +145,6 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       (coverMaintainOnEnqueue current pending)
       (removePendingStillSubset pending current.pendingAreDeps))
 
-{-
 
 Terminal : {dg : _} -> Scheduler dg -> Type
 Terminal state = {s : Scheduler dg} -> Not (Step state s)
@@ -156,19 +155,24 @@ data Trace : Scheduler dg -> Scheduler dg -> Type where
   WithStep : Step a b -> Trace b c -> Trace a c
 
 total
-nothingNotJust : Nothing = Just _ -> Void
-nothingNotJust Refl impossible
-
-total
-finishedIsTerminal : (fs : Scheduler dg) -> Finished fs -> Terminal fs
-finishedIsTerminal _ (_, readyEmpty, _, _) (Start _ _ elemReady _) = elemInEmptyImpossible elemReady readyEmpty
-finishedIsTerminal _ (_, _, runningEmpty, _) (Complete _ _ runningFull) =
+finishedIsTerminal : {ts : List Task} -> {dg : DAG ts} -> (fs : Scheduler dg) -> Finished fs -> Terminal fs
+finishedIsTerminal fs (_, _, noRunning, _) (Complete fs _ isRunning) =
   let
-    nothingIsSomething = trans (sym runningEmpty) runningFull
+    nothingIsSomething = trans (sym noRunning) isRunning
   in
-  nothingNotJust nothingIsSomething
-finishedIsTerminal fs (pendingEmpty, _, _, _) (Enqueue fs _ _ elemPending _) = elemInEmptyImpossible elemPending pendingEmpty
+  uninhabited nothingIsSomething
+finishedIsTerminal fs (_, noReady, _, _) (Start fs ready _) =
+  let
+    emptyEqNonempty = trans (sym noReady) ready
+  in
+  uninhabited emptyEqNonempty
+finishedIsTerminal fs (noPending, _, _, _) (Enqueue fs hasPending _) =
+  let
+    emptyEqNonempty = trans (sym noPending) hasPending
+  in
+  uninhabited emptyEqNonempty
 
+{-
 total
 terminalMeansNoRunning : (ts : Scheduler dg) -> Terminal ts -> ts.running = Nothing
 terminalMeansNoRunning (MkScheduler _ _ Nothing _) _ = Refl
