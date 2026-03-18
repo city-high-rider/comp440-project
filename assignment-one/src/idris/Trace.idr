@@ -172,11 +172,10 @@ finishedIsTerminal fs (noPending, _, _, _) (Enqueue fs hasPending _) =
   in
   uninhabited emptyEqNonempty
 
-{-
 total
-terminalMeansNoRunning : (ts : Scheduler dg) -> Terminal ts -> ts.running = Nothing
-terminalMeansNoRunning (MkScheduler _ _ Nothing _) _ = Refl
-terminalMeansNoRunning ts@(MkScheduler _ _ (Just x) _) stepToVoid =
+terminalMeansNoRunning : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> Terminal s -> s.running = Nothing
+terminalMeansNoRunning (MkScheduler _ _ Nothing _ _ _) _ = Refl
+terminalMeansNoRunning ts@(MkScheduler _ _ (Just x) _ _ _) stepToVoid =
   let
     stepComplete = Complete ts x Refl 
     void = stepToVoid stepComplete
@@ -184,21 +183,24 @@ terminalMeansNoRunning ts@(MkScheduler _ _ (Just x) _) stepToVoid =
   absurd void
 
 total
-terminalMeansNotReady : (ts : Scheduler dg) -> Terminal ts -> ts.ready = []
-terminalMeansNotReady (MkScheduler _ [] _ _) _ = Refl
-terminalMeansNotReady ts@(MkScheduler _ (x :: xs) _ _) stepToVoid =
+terminalMeansNotReady : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> Terminal s -> s.ready = []
+terminalMeansNotReady (MkScheduler _ [] _ _ _ _) stepToVoid = Refl
+terminalMeansNotReady s@(MkScheduler pending (oneReady :: rest) running finished _ _) stepToVoid =
   let
-    notRunning = terminalMeansNoRunning ts stepToVoid
-    stepStart = Start ts x Here notRunning 
+    noRunning = terminalMeansNoRunning s stepToVoid
+    oneReady : (s.ready = oneReady :: rest) = Refl
+    step = Start s oneReady noRunning
   in
-  absurd (stepToVoid stepStart)
+  absurd (stepToVoid step)
 
 total
-terminalMeansNoPending : {dg : DAG ds} -> (ts : Scheduler dg) -> Terminal ts -> ts.pending = []
-terminalMeansNoPending (MkScheduler [] _ _ _) _ = Refl
-terminalMeansNoPending ts@(MkScheduler (x :: xs) ready running finished) stepToVoid = 
+terminalMeansNoPending : {ds : List Task} -> {dg : DAG ds} -> (ts : Scheduler dg) -> Terminal ts -> ts.pending = []
+terminalMeansNoPending (MkScheduler [] _ _ _ _ _) _ = Refl
+terminalMeansNoPending ts@(MkScheduler (onePending :: rest) ready running finished cover pendingInDag) stepToVoid =
   let
-    stepEnqueue = Enqueue ts x ?a Here ?b
+    noRunning = terminalMeansNoRunning ts stepToVoid
+    notReady = terminalMeansNotReady ts stepToVoid
+    hasPending : (ts.pending = (onePending :: rest)) = Refl
+    step = Enqueue ts hasPending ?depsFinished
   in
-  absurd (stepToVoid stepEnqueue)
--}
+  absurd (stepToVoid step)
