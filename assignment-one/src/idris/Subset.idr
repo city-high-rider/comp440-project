@@ -13,11 +13,6 @@ public export total
 SsEq : List a -> List a -> Type 
 SsEq a b = (a `Subset` b, b `Subset` a) 
 
-public export total
-extractPrf : x `Elem` xs -> All prop xs -> prop x
-extractPrf Here (y :: _) = y
-extractPrf (KeepLooking y) (_ :: w) = extractPrf y w
-
 total
 listContainsItsContents : {list : _} -> All (`Elem`list) list
 listContainsItsContents {list = []} = VacuouslyTrue

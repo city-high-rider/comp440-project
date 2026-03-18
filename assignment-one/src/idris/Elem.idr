@@ -1,7 +1,5 @@
 module Elem
 
-import All
-
 %default total
 
 public export
