@@ -27,13 +27,7 @@ record Scheduler (dg : DAG ts) where
 
 total
 Finished : {ts : _} -> {dg : DAG ts} -> Scheduler dg -> Type
-Finished s = (s.pending = [], s.ready = [], s.running = Nothing, s.finished `SsEq` ts)  
-
-total
-EnabledIn : {ts : List Task} -> {dg : DAG ts} -> Task -> Scheduler dg -> Type
-EnabledIn task s = (inPending : task `Elem` s.pending ** case deps dg task (extractPrf inPending s.pendingAreDeps) of
-  (ds ** _) => All (`Elem`s.finished) ds
-  )
+Finished s = (s.pending = [], s.ready = [], s.running = Nothing, ts `Subset` s.finished)  
 
 total
 elemSingletonEq : a `Elem` [b] -> a = b
@@ -128,8 +122,6 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
     (current : Scheduler dg) ->
     (readyThis : Task) ->
     (pending : readyThis `Elem` current.pending) ->
-    (depsFinished : case deps dg readyThis (extractPrf pending current.pendingAreDeps) of
-                         (ds ** _) => All (`Elem`current.finished) ds) -> 
     Step current (MkScheduler
       (remove current.pending pending)
       (readyThis :: current.ready)
@@ -137,6 +129,13 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       current.finished
       (coverMaintainOnEnqueue current pending)
       (removeFromSubsetStillSubset {prf = pending} current.pendingAreDeps))
+
+total
+measure : (s : Scheduler dg) -> Nat
+measure (MkScheduler pending ready running _ _ _) = length (maybeToList running) + 2*(length ready) + 3*(length pending)
+
+total
+stepDecreasesMeasure : {a, b : Scheduler dg} -> a `Step` b -> measure a = S (measure b)
 
 public export
 data Trace : Scheduler dg -> Scheduler dg -> Type where
@@ -167,24 +166,24 @@ onlyFinishedElemAllFinished e (Further (ThisOne [] prf)) = absurd (elemInEmptyIm
 onlyFinishedElemAllFinished e (Further (Further (ThisOne [] prf))) = absurd (elemInEmptyImpossible prf Refl)
 onlyFinishedElemAllFinished e (Further (Further (Further (ThisOne finish prf)))) = prf
 
+total
+findStep : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> Either (Finished s) (next ** s `Step` next)
+findStep s@(MkScheduler pending ready (Just x) finished cover pendingAreDeps) =
+  Right ((MkScheduler pending ready Nothing (x :: finished) (coverMaintainOnComplete s Refl) pendingAreDeps) ** Complete s x Refl)
+findStep s@(MkScheduler pending (x :: xs) Nothing finished cover pendingAreDeps) =
+  Right ((MkScheduler pending xs (Just x) finished (coverMaintainOnStart s Refl Refl) pendingAreDeps) ** Start s Refl Refl)
+findStep (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps) = ?findStep_rhs_4
+findStep (MkScheduler [] [] Nothing finished cover pendingAreDeps) =
+  Left (Refl, Refl, Refl, propImplies (onlyFinishedElemAllFinished {ts = ts}) cover)
+
 partial
-traceToFinished : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (fs : Scheduler dg ** (Finished fs, Trace s fs))
-traceToFinished (MkScheduler pending ready (Just x) finished cover pendingAreDeps) =
-  let
-    stepComplete = Complete (MkScheduler pending ready (Just x) finished cover pendingAreDeps) x Refl
-    (fs ** (finishedPrf, restTrace)) = traceToFinished (MkScheduler pending ready Nothing (x::finished) (coverMaintainOnComplete (MkScheduler pending ready (Just x) finished cover pendingAreDeps) Refl) pendingAreDeps) 
-  in
-  (fs ** (finishedPrf, WithStep stepComplete restTrace))
-traceToFinished (MkScheduler pending (x :: xs) Nothing finished cover pendingAreDeps) =
-  let
-    stepStart = Start (MkScheduler pending (x::xs) Nothing finished cover pendingAreDeps) Refl Refl 
-    (fs ** (finishedPrf, restTrace)) = traceToFinished (MkScheduler pending xs (Just x) finished (coverMaintainOnStart (MkScheduler pending (x::xs) Nothing finished cover pendingAreDeps) Refl Refl) pendingAreDeps)
-  in
-  (fs ** (finishedPrf, WithStep stepStart restTrace))
-traceToFinished (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps) = ?traceToFinished_rhs_4
-traceToFinished (MkScheduler [] [] Nothing finished cover pendingAreDeps) =
-  let
-    finishedPrf : Finished (MkScheduler [] [] Nothing finished cover pendingAreDeps) =
-      (Refl, Refl, Refl, ?a, propImplies onlyFinishedElemAllFinished cover)
-  in
-  (MkScheduler [] [] Nothing finished cover pendingAreDeps ** (finishedPrf, StartHere (MkScheduler [] [] Nothing finished cover pendingAreDeps))) 
+findTrace : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (finish : Scheduler dg ** (Finished finish, Trace s finish))
+findTrace s =
+  case findStep s of
+       Left finishPrf => (s ** (finishPrf, StartHere s))
+       Right (next ** step) =>
+          let
+            (finishedState ** (finishPrf, restOfTrace)) = findTrace next
+          in
+          (finishedState ** (finishPrf, WithStep step restOfTrace))
+
