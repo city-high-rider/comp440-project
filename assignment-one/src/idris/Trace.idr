@@ -184,10 +184,7 @@ traceToFinished (MkScheduler pending (x :: xs) Nothing finished cover pendingAre
 traceToFinished (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps) = ?traceToFinished_rhs_4
 traceToFinished (MkScheduler [] [] Nothing finished cover pendingAreDeps) =
   let
-    noPending : ((MkScheduler [] [] Nothing finished cover pendingAreDeps).pending = []) = Refl
-    noReady : ((MkScheduler [] [] Nothing finished cover pendingAreDeps).ready = []) = Refl
-    noRunning : ((MkScheduler [] [] Nothing finished cover pendingAreDeps).running = Nothing) = Refl
     finishedPrf : Finished (MkScheduler [] [] Nothing finished cover pendingAreDeps) =
-      (noPending, noReady, noRunning, ?a, propImplies onlyFinishedElemAllFinished cover)
+      (Refl, Refl, Refl, ?a, propImplies onlyFinishedElemAllFinished cover)
   in
   (MkScheduler [] [] Nothing finished cover pendingAreDeps ** (finishedPrf, StartHere (MkScheduler [] [] Nothing finished cover pendingAreDeps))) 
