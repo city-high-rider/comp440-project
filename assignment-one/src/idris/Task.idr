@@ -28,13 +28,3 @@ deps (AddTask _ _ _ subGraph) t (KeepLooking y) =
     (deps ** prf) = deps subGraph t y
   in
   (deps ** propImplies (\_ => KeepLooking) prf)
-
-public export total
-deps' : {ts : List Task} -> DAG ts -> (t : Task) -> t `Elem` ts -> List Task
-deps' x t y =
-  let
-    (ds ** _) = deps x t y
-  in
-  ds
-
-

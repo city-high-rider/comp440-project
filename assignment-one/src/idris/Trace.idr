@@ -30,6 +30,12 @@ Finished : {ts : _} -> {dg : DAG ts} -> Scheduler dg -> Type
 Finished s = (s.pending = [], s.ready = [], s.running = Nothing, s.finished `SsEq` ts)  
 
 total
+EnabledIn : {ts : List Task} -> {dg : DAG ts} -> Task -> Scheduler dg -> Type
+EnabledIn task s = (inPending : task `Elem` s.pending ** case deps dg task (extractPrf inPending s.pendingAreDeps) of
+  (ds ** _) => All (`Elem`s.finished) ds
+  )
+
+total
 elemSingletonEq : a `Elem` [b] -> a = b
 elemSingletonEq Here = Refl
 elemSingletonEq (KeepLooking _) impossible
@@ -122,7 +128,8 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
     (current : Scheduler dg) ->
     (readyThis : Task) ->
     (pending : readyThis `Elem` current.pending) ->
-    (depsFinished : All (`Elem` current.finished) (deps' dg readyThis (extractPrf pending current.pendingAreDeps))) -> 
+    (depsFinished : case deps dg readyThis (extractPrf pending current.pendingAreDeps) of
+                         (ds ** _) => All (`Elem`current.finished) ds) -> 
     Step current (MkScheduler
       (remove current.pending pending)
       (readyThis :: current.ready)
@@ -131,74 +138,33 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       (coverMaintainOnEnqueue current pending)
       (removeFromSubsetStillSubset {prf = pending} current.pendingAreDeps))
 
-Terminal : {dg : _} -> Scheduler dg -> Type
-Terminal state = {s : Scheduler dg} -> Not (Step state s)
-
 public export
 data Trace : Scheduler dg -> Scheduler dg -> Type where
   StartHere : (initialState : Scheduler dg) -> Trace initialState initialState
   WithStep : Step a b -> Trace b c -> Trace a c
 
 total
-finishedIsTerminal : {ts : List Task} -> {dg : DAG ts} -> (fs : Scheduler dg) -> Finished fs -> Terminal fs
-finishedIsTerminal fs (_, _, noRunning, _) (Complete fs _ isRunning) =
+pendingOrFinishedHelper : (s : Scheduler dg) -> s .ready = [] -> s .running = Nothing -> (e : Task) -> One (\subset => Elem e subset) [s .pending, s .ready, maybeToList (s .running), s .finished] -> Either (Elem e (s .pending)) (Elem e (s .finished))
+pendingOrFinishedHelper _ _ _ _ (ThisOne s.pending inPending) = Left inPending
+pendingOrFinishedHelper s notReady _ e (Further (ThisOne s.ready inReady)) =
+  absurd (elemInEmptyImpossible inReady notReady)
+pendingOrFinishedHelper s _ notRunning e (Further (Further (ThisOne (maybeToList s.running) inRunning))) =
   let
-    nothingIsSomething = trans (sym noRunning) isRunning
+    inEmpty : e `Elem` [] = replace notRunning {p = Elem e . maybeToList} inRunning
   in
-  uninhabited nothingIsSomething
-finishedIsTerminal fs (_, noReady, _, _) (Start fs ready _) =
-  let
-    emptyEqNonempty = trans (sym noReady) ready
-  in
-  uninhabited emptyEqNonempty
-finishedIsTerminal fs (noPending, _, _, _) (Enqueue fs readyThis hasPending _) =
-  let
-    elemOfEmpty = replace noPending {p = Elem readyThis} hasPending
-  in
-  elemInEmptyImpossible elemOfEmpty Refl
+  absurd (elemInEmptyImpossible inEmpty Refl)
+pendingOrFinishedHelper s _ _ _ (Further (Further (Further (ThisOne s.finished inFinished)))) = Right inFinished
+
 
 total
-terminalMeansNoRunning : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> Terminal s -> s.running = Nothing
-terminalMeansNoRunning (MkScheduler _ _ Nothing _ _ _) _ = Refl
-terminalMeansNoRunning ts@(MkScheduler _ _ (Just x) _ _ _) stepToVoid =
-  let
-    stepComplete = Complete ts x Refl 
-    void = stepToVoid stepComplete
-  in
-  absurd void
+pendingOrFinished : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (idle : s.running = Nothing) -> (notReady : s.ready = []) -> All (\task => Either (task`Elem`s.pending) (task`Elem`s.finished)) ts
+pendingOrFinished s idle notReady = propImplies (\e => pendingOrFinishedHelper s notReady idle e) s.cover
 
-total
-terminalMeansNotReady : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> Terminal s -> s.ready = []
-terminalMeansNotReady (MkScheduler _ [] _ _ _ _) stepToVoid = Refl
-terminalMeansNotReady s@(MkScheduler pending (oneReady :: rest) running finished _ _) stepToVoid =
+traceToFinished : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (fs : Scheduler dg ** (Finished fs, Trace s fs))
+traceToFinished current@(MkScheduler pending ready (Just x) finished cover pendingAreDeps) =
   let
-    noRunning = terminalMeansNoRunning s stepToVoid
-    oneReady : (s.ready = oneReady :: rest) = Refl
-    step = Start s oneReady noRunning
+    next : Scheduler dg = (MkScheduler pending ready Nothing (x::finished) (coverMaintainOnComplete current Refl) pendingAreDeps)
+    stepComplete : Step current _ = Complete current x Refl
   in
-  absurd (stepToVoid step)
-
-{-
-total
-terminalMeansNoPending : {ds : List Task} -> {dg : DAG ds} -> (ts : Scheduler dg) -> Terminal ts -> ts.pending = []
-terminalMeansNoPending (MkScheduler [] _ _ _ _ _) _ = Refl
-terminalMeansNoPending ts@(MkScheduler (onePending :: rest) ready running finished cover pendingInDag) stepToVoid =
-  let
-    noRunning = terminalMeansNoRunning ts stepToVoid
-    notReady = terminalMeansNotReady ts stepToVoid
-    hasPending : (ts.pending = (onePending :: rest)) = Refl
-    step = Enqueue ts hasPending ?depsFinished
-  in
-  absurd (stepToVoid step)
-
-total
-terminalMeansAllFinished : {ds : List Task} -> {dg : DAG ds} -> (ts : Scheduler dg) -> Terminal ts -> ts.finished `SsEq` ds
-terminalMeansAllFinished ts stepToVoid =
-  let
-    noRunning = terminalMeansNoRunning ts stepToVoid
-    notReady = terminalMeansNotReady ts stepToVoid
-    noPending = terminalMeansNoPending ts stepToVoid
-  in
-  ?terminalMeansAllFinished_rhs
-
--}
+  ?hole1
+traceToFinished (MkScheduler pending ready Nothing finished cover pendingAreDeps) = ?traceToFinished_rhs_1
