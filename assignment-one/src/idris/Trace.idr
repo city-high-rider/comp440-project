@@ -160,11 +160,34 @@ total
 pendingOrFinished : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (idle : s.running = Nothing) -> (notReady : s.ready = []) -> All (\task => Either (task`Elem`s.pending) (task`Elem`s.finished)) ts
 pendingOrFinished s idle notReady = propImplies (\e => pendingOrFinishedHelper s notReady idle e) s.cover
 
+total
+onlyFinishedElemAllFinished : {ts : List Task} -> (e : Task) -> One (e`Elem`) [[], [], [], finish] -> e `Elem` finish
+onlyFinishedElemAllFinished e (ThisOne [] prf) = absurd (elemInEmptyImpossible prf Refl)
+onlyFinishedElemAllFinished e (Further (ThisOne [] prf)) = absurd (elemInEmptyImpossible prf Refl)
+onlyFinishedElemAllFinished e (Further (Further (ThisOne [] prf))) = absurd (elemInEmptyImpossible prf Refl)
+onlyFinishedElemAllFinished e (Further (Further (Further (ThisOne finish prf)))) = prf
+
+partial
 traceToFinished : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (fs : Scheduler dg ** (Finished fs, Trace s fs))
-traceToFinished current@(MkScheduler pending ready (Just x) finished cover pendingAreDeps) =
+traceToFinished (MkScheduler pending ready (Just x) finished cover pendingAreDeps) =
   let
-    next : Scheduler dg = (MkScheduler pending ready Nothing (x::finished) (coverMaintainOnComplete current Refl) pendingAreDeps)
-    stepComplete : Step current _ = Complete current x Refl
+    stepComplete = Complete (MkScheduler pending ready (Just x) finished cover pendingAreDeps) x Refl
+    (fs ** (finishedPrf, restTrace)) = traceToFinished (MkScheduler pending ready Nothing (x::finished) (coverMaintainOnComplete (MkScheduler pending ready (Just x) finished cover pendingAreDeps) Refl) pendingAreDeps) 
   in
-  ?hole1
-traceToFinished (MkScheduler pending ready Nothing finished cover pendingAreDeps) = ?traceToFinished_rhs_1
+  (fs ** (finishedPrf, WithStep stepComplete restTrace))
+traceToFinished (MkScheduler pending (x :: xs) Nothing finished cover pendingAreDeps) =
+  let
+    stepStart = Start (MkScheduler pending (x::xs) Nothing finished cover pendingAreDeps) Refl Refl 
+    (fs ** (finishedPrf, restTrace)) = traceToFinished (MkScheduler pending xs (Just x) finished (coverMaintainOnStart (MkScheduler pending (x::xs) Nothing finished cover pendingAreDeps) Refl Refl) pendingAreDeps)
+  in
+  (fs ** (finishedPrf, WithStep stepStart restTrace))
+traceToFinished (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps) = ?traceToFinished_rhs_4
+traceToFinished (MkScheduler [] [] Nothing finished cover pendingAreDeps) =
+  let
+    noPending : ((MkScheduler [] [] Nothing finished cover pendingAreDeps).pending = []) = Refl
+    noReady : ((MkScheduler [] [] Nothing finished cover pendingAreDeps).ready = []) = Refl
+    noRunning : ((MkScheduler [] [] Nothing finished cover pendingAreDeps).running = Nothing) = Refl
+    finishedPrf : Finished (MkScheduler [] [] Nothing finished cover pendingAreDeps) =
+      (noPending, noReady, noRunning, ?a, propImplies onlyFinishedElemAllFinished cover)
+  in
+  (MkScheduler [] [] Nothing finished cover pendingAreDeps ** (finishedPrf, StartHere (MkScheduler [] [] Nothing finished cover pendingAreDeps))) 
