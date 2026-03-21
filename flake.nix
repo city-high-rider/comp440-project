@@ -50,13 +50,15 @@
                 endfor
               '';
             })
-            vscodium
             idris2Packages.idris2Lsp
+            vscodium
+            coq
+            coqPackages.stdlib
+            coqPackages.vscoq-language-server
             typst
             typst-live
             typstyle
             tinymist
-            # edit-report
           ];
 
           shellHook = "echo Entered Comp Devshell...";

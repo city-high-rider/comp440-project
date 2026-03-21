@@ -2,3 +2,10 @@
 *.ttm
 *.idr~
 *.swp
+*.aux
+*.vo
+*.vos
+*.vok
+*.vio
+*.glob
+.coq-native/
