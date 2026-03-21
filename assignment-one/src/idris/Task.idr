@@ -8,22 +8,19 @@ import Subset
 
 %default total
 
-export
+public export
 Task : Type
 Task = Nat
-
-export total
-DecEq Task
 
 public export
 data DAG : List Task -> Type where
   Empty : DAG []
-  AddTask : (t : Task) -> (deps : List Task) -> deps `Subset` tasks -> DAG tasks -> DAG (t :: tasks)
+  AddTask : (t : Task) -> (deps : List Task) -> Not (t `Elem` tasks) -> deps `Subset` tasks -> DAG tasks -> DAG (t :: tasks)
 
 public export total
 deps : {ts : List Task} -> DAG ts -> (t : Task) -> t `Elem` ts -> (deps : List Task ** All (`Elem`ts) deps)
-deps (AddTask t ds ssPrf _) t Here = (ds ** propImplies (\_ => KeepLooking) ssPrf)
-deps (AddTask _ _ _ subGraph) t (KeepLooking y) =
+deps (AddTask t ds _ ssPrf _) t Here = (ds ** propImplies (\_ => KeepLooking) ssPrf)
+deps (AddTask _ _ _ _ subGraph) t (KeepLooking y) =
   let
     (deps ** prf) = deps subGraph t y
   in
