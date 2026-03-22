@@ -20,13 +20,13 @@ extractPrf Here (y :: _) = y
 extractPrf (KeepLooking y) (_ :: w) = extractPrf y w
 
 public export total
-allAOrBMeansAllAOrOneB : {a : Type} -> {es : List a} -> {propA, propB : a -> Type} -> All (\e => Either (propA e) (propB e)) es -> Either (All propA es) (e ** propB e)
+allAOrBMeansAllAOrOneB : {a : Type} -> {es : List a} -> {propA, propB : a -> Type} -> All (\e => Either (propA e) (propB e)) es -> Either (All propA es) (e ** (propB e, e `Elem` es))
 allAOrBMeansAllAOrOneB VacuouslyTrue = Left VacuouslyTrue
 allAOrBMeansAllAOrOneB ((::) {x=thisElem} aOrB rest) =
   case aOrB of
-       Right b => Right (thisElem ** b)
-       Left a =>
+       (Left isA) =>
           case allAOrBMeansAllAOrOneB rest of
-               (Right (witness ** prf)) => Right (witness ** prf)
-               (Left tailAllA) => Left (a :: tailAllA)
+               (Left restAllA) => Left (isA :: restAllA)
+               (Right (restOneB ** (prfB, prfElemRest))) => Right (restOneB ** (prfB, KeepLooking prfElemRest))
+       (Right isB) => Right (thisElem ** (isB, Here))
 

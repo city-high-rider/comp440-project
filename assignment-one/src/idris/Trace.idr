@@ -123,7 +123,7 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
     (readyThis : Task) ->
     (pending : readyThis `Elem` current.pending) ->
     (ds : List Task) ->
-    (depsAreDeps : ds = fst (deps dg readyThis (extractPrf pending current.pendingAreDeps))) ->
+    (depsAreDeps : ds = (deps dg readyThis (extractPrf pending current.pendingAreDeps))) ->
     (depsAreFinished : ds `Subset` current.finished) ->
     Step current (MkScheduler
       (remove current.pending pending)
@@ -162,27 +162,37 @@ total
 pendingOrFinished : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (idle : s.running = Nothing) -> (notReady : s.ready = []) -> All (\task => Either (task`Elem`s.finished) (task`Elem`s.pending)) ts
 pendingOrFinished s idle notReady = propImplies (\e => pendingOrFinishedHelper s notReady idle e) s.cover
 
+total
+symNotEq : Not (a = b) -> Not (b = a)
+symNotEq aebContra bea = aebContra (sym bea)
+
 
 total
-findEnabled : {p : Task} -> {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> All (\task => Either (task`Elem`s.finished) (task`Elem`s.pending)) ts -> (p `Elem` s.pending) -> (en : Task ** (enPending : en`Elem`s.pending ** (enDeps : List Task ** (enDeps `Subset` s.finished, enDeps = fst (deps dg en (extractPrf enPending s.pendingAreDeps))))))  
+findEnabled : {p : Task} -> {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> All (\task => Either (task`Elem`s.finished) (task`Elem`s.pending)) ts -> (p `Elem` s.pending) -> (en : Task ** (enPending : en`Elem`s.pending ** (enDeps : List Task ** (enDeps `Subset` s.finished, enDeps = (deps dg en (extractPrf enPending s.pendingAreDeps))))))  
 findEnabled {dg = Empty} (MkScheduler (p :: restPending) ready running finished cover (pInTs :: _)) porf Here =
   absurd (elemInEmptyImpossible pInTs Refl)
-findEnabled {dg = (AddTask t tDeps tNotInRestDag tDepsSS restDag)} (MkScheduler (p :: restPending) ready running finished (_ :: restCover) (pInTs :: othersInTs)) (_ :: porfSmaller) Here =
+findEnabled {ts = t :: restTasks} {dg = (AddTask t tDeps tNotInRestDag tDepsSS restDag)} (MkScheduler (p :: restPending) ready running finished (_ :: restCover) (pInTs :: othersInTs)) (_ :: porfSmaller) Here =
   case pInTs of
-       Here => case allAOrBMeansAllAOrOneB porfSmaller of
-          (Left allFinished) =>
-            let
-              allTDepsFinished = propImplies (\tdep, ePrf => extractPrf ePrf allFinished) tDepsSS
-            in
-            (p ** Here ** tDeps ** (allTDepsFinished, Refl))
-          (Right (pDep ** pDepPending)) =>
-            let
-              pDepInRestPending : pDep `Elem` restPending = ?todo
-              (enabled ** enabledIsPending ** eDeps ** (eDepsDone, eDepsAreDeps)) = findEnabled {dg = restDag} (MkScheduler restPending ready running finished ?coverInd ?indPdeps) ?indPorf pDepInRestPending
-            in
-             (enabled ** KeepLooking enabledIsPending ** eDeps ** (?fillMe, ?retDeps))
-       KeepLooking pFurtherInTs => ?test2
-findEnabled {dg = someDag} (MkScheduler (firstPending :: restPending) ready running finished cover pendingAreDeps) porf (KeepLooking pInRestPending) = ?findEnabled_rhs_2
+       Here =>
+        let
+          porfTDeps
+            : All (\task => Either (Elem task finished) (Elem task (p :: restPending))) tDeps
+            = propImplies (\tdep, tDepInXs => extractPrf tDepInXs porfSmaller) tDepsSS
+        in
+        case allAOrBMeansAllAOrOneB porfTDeps of
+             (Left allFinished) => (p ** Here ** tDeps ** (allFinished, Refl))
+             (Right (pDep ** (pDepPending, pDepInTDeps))) =>
+              let
+                pDepInRestTasks : pDep `Elem` restTasks = extractPrf pDepInTDeps tDepsSS
+                pDepNotP : (Not (p = pDep)) = notEqByMembership tNotInRestDag pDepInRestTasks
+                pDepInRestPending : pDep `Elem` restPending = notInHeadInTail (symNotEq pDepNotP) pDepPending
+                pendingAreDepsInd : All (\arg => Elem arg restTasks) restPending = subsetShrink othersInTs ?b
+                (en ** enPending ** enDeps ** (prfEnabled, prfValidDeps)) = findEnabled {dg = restDag} (MkScheduler restPending ready running finished ?coverInd pendingAreDepsInd) ?porfInd pDepInRestPending
+                ohNo = extractFurtherLemma {elemInList = enPending, ssTail = pendingAreDepsInd, ssHeadTail = othersInTs} Refl
+              in
+              (en ** KeepLooking enPending ** enDeps ** (prfEnabled, rewrite prfValidDeps in rewrite sym ohNo in Refl))
+       KeepLooking pFurtherInTs => ?test2 -- recurse on the DAG tail here
+findEnabled {dg = someDag} (MkScheduler (firstPending :: restPending) ready running finished cover pendingAreDeps) porf (KeepLooking pInRestPending) = ?findEnabled_rhs_2 
 
 total
 onlyFinishedElemAllFinished : {ts : List Task} -> (e : Task) -> One (e`Elem`) [[], [], [], finish] -> e `Elem` finish

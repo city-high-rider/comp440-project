@@ -57,3 +57,17 @@ xs `Cover` y = All (\elem => One (\subset => elem `Elem` subset) xs ) y
 total
 coverTest : [[1, 2], [2]] `Cover` [1, 2]
 coverTest = ThisOne [1, 2] Here :: (ThisOne [1, 2] (KeepLooking Here) :: VacuouslyTrue)
+
+
+public export total
+subsetShrink : {aHead, aTail, someList : _} ->  someList `Subset` (aHead :: aTail) -> Not (aHead `Elem` someList) -> someList `Subset` aTail
+subsetShrink VacuouslyTrue headNotInList = VacuouslyTrue
+subsetShrink (Here :: restHere) headNotInList = absurd (headNotInList Here)
+subsetShrink ((KeepLooking firstFurther) :: restHere) headNotInList =
+  let
+    ind = subsetShrink restHere (notInListNotFurther headNotInList)
+  in
+  firstFurther :: ind
+
+public export total
+extractFurtherLemma : {x, aHead : a} -> {aTail, someList : List a} -> {ssTail : All (\arg => arg `Elem` aTail) someList} -> {elemInList : x `Elem` someList} -> {somePrf : x `Elem` aTail} -> {ssHeadTail : All (\arg => arg `Elem` (aHead::aTail)) someList} -> (somePrf = extractPrf {prop = \arg => arg `Elem` aTail} elemInList ssTail) -> (KeepLooking somePrf = (extractPrf {prop = \arg => arg `Elem` (aHead::aTail)} elemInList ssHeadTail))
