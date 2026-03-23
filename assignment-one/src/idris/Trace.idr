@@ -192,7 +192,18 @@ findEnabled {ts = t :: restTasks} {dg = (AddTask t tDeps tNotInRestDag tDepsSS r
               in
               (en ** KeepLooking enPending ** enDeps ** (prfEnabled, rewrite prfValidDeps in rewrite sym ohNo in Refl))
        KeepLooking pFurtherInTs => ?test2 -- recurse on the DAG tail here
-findEnabled {dg = someDag} (MkScheduler (firstPending :: restPending) ready running finished cover pendingAreDeps) porf (KeepLooking pInRestPending) = ?findEnabled_rhs_2 
+findEnabled {dg = Empty} (MkScheduler (firstPending :: restPending) ready running finished cover pendingAreDeps) porf (KeepLooking pInRestPending) =
+  let
+    firstPendingInNothing : firstPending `Elem` [] = extractPrf Here pendingAreDeps
+  in
+  absurd (elemInEmptyImpossible firstPendingInNothing Refl)
+findEnabled {ts = firstTask :: restTasks} {dg = (AddTask firstTask tDeps tNotInRestDag tDepsSS restDag)} (MkScheduler (firstPending :: restPending) ready running finished cover (firstPendingIsDeps :: restPendingAreDeps)) porf (KeepLooking pInRestPending) =
+  let
+    fstTaskNotRestPending : Elem firstTask restPending -> Void = ?theHole
+    (en ** enPending ** enDeps ** (enDepsFinished, enDepsAreDeps)) = findEnabled {dg = restDag} (MkScheduler restPending ready running finished ?cover (subsetShrink restPendingAreDeps fstTaskNotRestPending)) ?porf pInRestPending
+    furtherLem = extractFurtherLemma {ssTail = (subsetShrink restPendingAreDeps fstTaskNotRestPending), ssHeadTail = restPendingAreDeps, elemInList = enPending} Refl
+  in
+  (en ** KeepLooking enPending ** enDeps ** (enDepsFinished, rewrite enDepsAreDeps in rewrite sym furtherLem in Refl))
 
 total
 onlyFinishedElemAllFinished : {ts : List Task} -> (e : Task) -> One (e`Elem`) [[], [], [], finish] -> e `Elem` finish
