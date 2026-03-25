@@ -24,6 +24,10 @@ record Scheduler (dg : DAG ts) where
   finished : List Task
   cover : [pending, ready, maybeToList running, finished] `Cover` ts
   pendingAreDeps : pending `Subset` ts
+  pdjr : Disjoint pending ready
+  pdje : Disjoint pending (maybeToList running)
+  pdjf : Disjoint pending finished
+
 
 total
 Finished : {ts : _} -> {dg : DAG ts} -> Scheduler dg -> Type
@@ -81,6 +85,26 @@ total
 coverMaintainOnEnqueue : {ts : List Task} -> {readyThis : Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (pending : readyThis `Elem` s.pending) -> [(remove s.pending pending), (readyThis :: s.ready), (maybeToList s.running), s.finished] `Cover` ts
 coverMaintainOnEnqueue s pending = propImplies (\e => enqueueCoverHelper s pending e) s.cover
 
+total
+pdjfOnComplete : {finishThis : Task} -> (s : Scheduler dg) -> s.running = Just finishThis -> Disjoint s.pending (finishThis :: s.finished) 
+pdjfOnComplete (MkScheduler pending _ (Just finishThis) finished _ _ _ pdje pdjf) Refl =
+  let
+    nothingPendingIsFinishThis : All (\thing => Not (thing = finishThis)) pending
+      = propImplies (\_ => notElemSingletonNotEq) pdje
+    finishThisNotPending : Not (finishThis `Elem` pending)
+      = nothingEqNotElem nothingPendingIsFinishThis
+  in
+  growDj pdjf finishThisNotPending
+
+total
+pdjrOnStart : {something : Task} -> (s : Scheduler dg) -> s.ready = something::rest -> Disjoint s.pending rest
+pdjrOnStart (MkScheduler pending (something :: rest) _ _ _ _ pdjr _ _) Refl = shrinkDj pdjr
+
+total
+pdjeOnStart : {startThis : Task} -> {0 rest : List Task} -> (s : Scheduler dg) -> s.ready = startThis::rest -> Disjoint s.pending [startThis]
+pdjeOnStart (MkScheduler pending (startThis :: rest) running _ _ _ pdjr _ _) Refl =
+  propImplies (\_ => notInListNotFirst) pdjr
+
 public export
 data Step : Scheduler dg -> Scheduler dg -> Type where
   Complete :
@@ -93,7 +117,10 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
     Nothing
     (finishThis :: current.finished)
     (coverMaintainOnComplete current prfRun)
-    current.pendingAreDeps)
+    current.pendingAreDeps
+    current.pdjr
+    (forAllForSome (\_, inEmpty => elemInEmptyImpossible inEmpty Refl))
+    (pdjfOnComplete current prfRun))
 
   Start :
     (current : Scheduler dg) ->
@@ -105,7 +132,10 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       (Just first)
       current.finished
       (coverMaintainOnStart current prfIdle prfReady)
-      current.pendingAreDeps)
+      current.pendingAreDeps
+      (pdjrOnStart {something = first} current prfReady)
+      (pdjeOnStart {startThis = first} current prfReady)
+      current.pdjf)
 
   Enqueue :
     {dg : DAG ts} ->
@@ -122,11 +152,14 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       current.running
       current.finished
       (coverMaintainOnEnqueue current pending)
-      (removeFromSubsetStillSubset {prf = pending} current.pendingAreDeps))
+      (removeFromSubsetStillSubset {prf = pending} current.pendingAreDeps)
+      ?pdjr2
+      ?pdje2
+      ?pdjf3)
 
 total
 measure : (s : Scheduler dg) -> Nat
-measure (MkScheduler pending ready running _ _ _) = length (maybeToList running) + 2*(length ready) + 3*(length pending)
+measure (MkScheduler pending ready running _ _ _ _ _ _) = length (maybeToList running) + 2*(length ready) + 3*(length pending)
 
 total
 stepDecreasesMeasure : {a, b : Scheduler dg} -> a `Step` b -> measure a = S (measure b)
@@ -193,6 +226,8 @@ onlyFinishedElemAllFinished e (Further (ThisOne [] prf)) = absurd (elemInEmptyIm
 onlyFinishedElemAllFinished e (Further (Further (ThisOne [] prf))) = absurd (elemInEmptyImpossible prf Refl)
 onlyFinishedElemAllFinished e (Further (Further (Further (ThisOne finish prf)))) = prf
 
+{-
+
 total
 findStep : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> Either (Finished s) (next ** s `Step` next)
 findStep s@(MkScheduler pending ready (Just x) finished cover pendingAreDeps) =
@@ -219,3 +254,4 @@ findTrace s =
           in
           (finishedState ** (finishPrf, WithStep step restOfTrace))
 
+-}

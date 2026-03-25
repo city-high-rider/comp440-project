@@ -35,3 +35,14 @@ falsePropEmptyList : All (\e => Void) es -> es = []
 falsePropEmptyList VacuouslyTrue = Refl
 falsePropEmptyList (someVoid :: _) = absurd someVoid
 
+public export total
+forAllForSome : {as : List a} -> {prop : a -> Type} -> ((x : a) -> prop x) -> All prop as
+forAllForSome {as = []} _ = VacuouslyTrue
+forAllForSome {as = (first :: rest)} prfMaker = (prfMaker first) :: (forAllForSome prfMaker)
+
+public export total
+nothingEqNotElem : All (\thing => Not (thing = x)) stuff -> Not (x `Elem` stuff)
+nothingEqNotElem VacuouslyTrue z = elemInEmptyImpossible z Refl
+nothingEqNotElem (fstThingNotX :: _) Here = fstThingNotX Refl
+nothingEqNotElem (_ :: restThingsNotX) (KeepLooking xFurther) =
+  nothingEqNotElem restThingsNotX xFurther

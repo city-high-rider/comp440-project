@@ -58,16 +58,41 @@ total
 coverTest : [[1, 2], [2]] `Cover` [1, 2]
 coverTest = ThisOne [1, 2] Here :: (ThisOne [1, 2] (KeepLooking Here) :: VacuouslyTrue)
 
+public export total
+Disjoint : List a -> List a -> Type
+Disjoint as bs = All (\thing => Not (thing`Elem`bs)) as
 
 public export total
-subsetShrink : {aHead, aTail, someList : _} ->  someList `Subset` (aHead :: aTail) -> Not (aHead `Elem` someList) -> someList `Subset` aTail
-subsetShrink VacuouslyTrue headNotInList = VacuouslyTrue
-subsetShrink (Here :: restHere) headNotInList = absurd (headNotInList Here)
-subsetShrink ((KeepLooking firstFurther) :: restHere) headNotInList =
+disjointNotInBoth : Disjoint xs ys -> Not (x ** (x`Elem`xs, x`Elem`ys))
+disjointNotInBoth disjPrf (something ** (inXs, inYs)) =
   let
-    ind = subsetShrink restHere (notInListNotFurther headNotInList)
+    somethingNotInYs : Not (something `Elem` ys) = extractPrf inXs disjPrf
   in
-  firstFurther :: ind
+  somethingNotInYs inYs
 
 public export total
-extractFurtherLemma : {x, aHead : a} -> {aTail, someList : List a} -> {ssTail : All (\arg => arg `Elem` aTail) someList} -> {elemInList : x `Elem` someList} -> {somePrf : x `Elem` aTail} -> {ssHeadTail : All (\arg => arg `Elem` (aHead::aTail)) someList} -> (somePrf = extractPrf {prop = \arg => arg `Elem` aTail} elemInList ssTail) -> (KeepLooking somePrf = (extractPrf {prop = \arg => arg `Elem` (aHead::aTail)} elemInList ssHeadTail))
+notInBothSym : {xs,ys : List a} -> Not (x ** (x`Elem`xs, x`Elem`ys)) -> Not (x ** (x`Elem`ys, x`Elem`xs))
+notInBothSym contra (x ** (inYs, inXs)) = contra (x ** (inXs, inYs))
+
+public export total
+growDj : All (\thing => Elem thing oldSet -> Void) ys -> (Elem newThing ys -> Void) -> All (\thing => Elem thing (newThing :: oldSet) -> Void) ys
+
+public export total
+disjointSym : {xs, ys : List a} -> Disjoint xs ys -> Disjoint ys xs
+disjointSym VacuouslyTrue = forAllForSome (\_, prf => elemInEmptyImpossible prf Refl)
+disjointSym (firstNotInYs :: restNotInYs) =
+  let
+    ind = disjointSym restNotInYs
+  in
+  growDj ind firstNotInYs
+   
+public export total
+shrinkDj : Disjoint xs (y::ys) -> Disjoint xs ys
+shrinkDj VacuouslyTrue = VacuouslyTrue
+shrinkDj (fstDj :: restDj) =
+  let
+    ind = shrinkDj restDj
+  in
+  (notInListNotFurther fstDj) :: ind
+
+

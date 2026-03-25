@@ -21,6 +21,11 @@ notInListNotFurther f Here = f (KeepLooking Here)
 notInListNotFurther f (KeepLooking x) = f (KeepLooking (KeepLooking x))
 
 public export total
+notInListNotFirst : Not (thing `Elem` (aHead::aTail)) -> Not (thing `Elem` [aHead])
+notInListNotFirst f Here = f Here
+notInListNotFirst f (KeepLooking x) = elemInEmptyImpossible x Refl
+
+public export total
 notInHeadInTail : (notHead : Not (elem = first)) -> (inList : elem `Elem` (first::rest)) -> elem `Elem` rest
 notInHeadInTail notHead Here = absurd (notHead Refl)
 notInHeadInTail _ (KeepLooking x) = x
@@ -43,3 +48,7 @@ public export total
 elemSingletonEq : a `Elem` [b] -> a = b
 elemSingletonEq Here = Refl
 elemSingletonEq (KeepLooking x) = absurd (elemInEmptyImpossible x Refl)
+
+public export total
+notElemSingletonNotEq : Not (a `Elem` [b]) -> Not (a = b)
+notElemSingletonNotEq f Refl = f Here
