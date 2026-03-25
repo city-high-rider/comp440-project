@@ -21,6 +21,11 @@ notInListNotFurther f Here = f (KeepLooking Here)
 notInListNotFurther f (KeepLooking x) = f (KeepLooking (KeepLooking x))
 
 public export total
+notInHeadInTail : (notHead : Not (elem = first)) -> (inList : elem `Elem` (first::rest)) -> elem `Elem` rest
+notInHeadInTail notHead Here = absurd (notHead Refl)
+notInHeadInTail _ (KeepLooking x) = x
+
+public export total
 notEqByMembership : Not (a `Elem` someList) -> b `Elem` someList -> Not (a = b)
 notEqByMembership {someList = b :: restList} aInXsContra Here aIsB =
   let
@@ -33,3 +38,8 @@ notEqByMembership {someList = something :: restList} aInXsContra (KeepLooking bF
     aHere : a `Elem` (something::restList) = KeepLooking aFurther
   in
   aInXsContra aHere
+
+public export total
+elemSingletonEq : a `Elem` [b] -> a = b
+elemSingletonEq Here = Refl
+elemSingletonEq (KeepLooking x) = absurd (elemInEmptyImpossible x Refl)

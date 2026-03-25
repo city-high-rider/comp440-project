@@ -30,3 +30,8 @@ allAOrBMeansAllAOrOneB ((::) {x=thisElem} aOrB rest) =
                (Right (restOneB ** (prfB, prfElemRest))) => Right (restOneB ** (prfB, KeepLooking prfElemRest))
        (Right isB) => Right (thisElem ** (isB, Here))
 
+public export total
+falsePropEmptyList : All (\e => Void) es -> es = []
+falsePropEmptyList VacuouslyTrue = Refl
+falsePropEmptyList (someVoid :: _) = absurd someVoid
+
