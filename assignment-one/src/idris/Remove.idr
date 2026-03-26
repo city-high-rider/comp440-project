@@ -3,6 +3,7 @@ module Remove
 import Elem
 import Subset
 import All
+import Unique
 
 public export total
 remove : (xs : List a) -> x `Elem` xs -> List a
@@ -33,3 +34,10 @@ public export total
 shrinkDjArb : {prf : something`Elem`xs} -> Disjoint xs ys -> Disjoint (remove xs prf) ys
 shrinkDjArb {prf = Here} (_ :: rest) = rest
 shrinkDjArb {prf = (KeepLooking further)} (firstNotHere :: rest) = firstNotHere :: shrinkDjArb {prf = further} rest
+
+public export total
+removeUniqueNotThere : {prf : Elem thing xs} -> Unique xs -> Not (thing `Elem` (remove xs prf))
+removeUniqueNotThere {prf = Here} (ConsUnique f x) Here = f Here
+removeUniqueNotThere {prf = Here} (ConsUnique f _) (KeepLooking y) = f (KeepLooking y)
+removeUniqueNotThere {prf = (KeepLooking further)} (ConsUnique f _) Here = f further
+removeUniqueNotThere {prf = (KeepLooking further)} (ConsUnique f x) (KeepLooking y) = removeUniqueNotThere {prf = further} x y
