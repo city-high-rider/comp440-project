@@ -28,3 +28,8 @@ removeFromSubsetStillSubset {prf = (KeepLooking y)} (x :: z) =
     ind = removeFromSubsetStillSubset {prf = y} z
   in
   x :: ind
+
+public export total
+shrinkDjArb : {prf : something`Elem`xs} -> Disjoint xs ys -> Disjoint (remove xs prf) ys
+shrinkDjArb {prf = Here} (_ :: rest) = rest
+shrinkDjArb {prf = (KeepLooking further)} (firstNotHere :: rest) = firstNotHere :: shrinkDjArb {prf = further} rest

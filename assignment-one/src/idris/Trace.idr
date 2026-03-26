@@ -105,6 +105,16 @@ pdjeOnStart : {startThis : Task} -> {0 rest : List Task} -> (s : Scheduler dg) -
 pdjeOnStart (MkScheduler pending (startThis :: rest) running _ _ _ pdjr _ _) Refl =
   propImplies (\_ => notInListNotFirst) pdjr
 
+total
+pdjrOnEnqueue : (s : Scheduler dg) -> (prf : readyThis `Elem` s.pending) -> Disjoint (remove s.pending prf) (readyThis::s.ready)
+pdjrOnEnqueue (MkScheduler pending ready _ _ _ _ pdjr _ _) prf =
+  let
+    shrinkPendingDjReady : Disjoint (remove pending prf) ready
+      = shrinkDjArb {prf = prf} pdjr
+    removedSoNotInPending : Not (readyThis `Elem` (remove pending prf)) = ?need_uniqueness
+  in
+  growDj shrinkPendingDjReady removedSoNotInPending
+
 public export
 data Step : Scheduler dg -> Scheduler dg -> Type where
   Complete :
@@ -153,9 +163,9 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       current.finished
       (coverMaintainOnEnqueue current pending)
       (removeFromSubsetStillSubset {prf = pending} current.pendingAreDeps)
-      ?pdjr2
-      ?pdje2
-      ?pdjf3)
+      (pdjrOnEnqueue current pending)
+      (shrinkDjArb {prf = pending} current.pdje)
+      (shrinkDjArb {prf = pending} current.pdjf))
 
 total
 measure : (s : Scheduler dg) -> Nat
@@ -197,7 +207,7 @@ findEnabled (t :: restTasks) (AddTask t tDeps tNotInRest depsSSRest restDag) s (
   case porfT of
        (Left itsFinished) =>
         let
-          pendingAndFinishedDisjoint : Not (thing ** (thing`Elem`s.pending,thing`Elem`s.finished)) = ?todo_implement_me
+          pendingAndFinishedDisjoint : Not (thing ** (thing`Elem`s.pending,thing`Elem`s.finished)) = disjointNotInBoth s.pdjf
           somethingPendingInRestTasks : somePending `Elem` restTasks =
             case decEq somePending t of
                  Yes Refl => absurd (pendingAndFinishedDisjoint (somePending ** (itsPending, itsFinished)))
@@ -254,4 +264,3 @@ findTrace s =
           in
           (finishedState ** (finishPrf, WithStep step restOfTrace))
 
--}

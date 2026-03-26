@@ -95,4 +95,3 @@ shrinkDj (fstDj :: restDj) =
   in
   (notInListNotFurther fstDj) :: ind
 
-
