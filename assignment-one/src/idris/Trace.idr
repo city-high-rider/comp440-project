@@ -7,6 +7,7 @@ import Decidable.Equality
 import Remove
 import Subset
 import Task
+import Unique
 
 %default total
 
@@ -27,6 +28,7 @@ record Scheduler (dg : DAG ts) where
   pdjr : Disjoint pending ready
   pdje : Disjoint pending (maybeToList running)
   pdjf : Disjoint pending finished
+  pUnique : Unique pending
 
 
 total
@@ -87,7 +89,7 @@ coverMaintainOnEnqueue s pending = propImplies (\e => enqueueCoverHelper s pendi
 
 total
 pdjfOnComplete : {finishThis : Task} -> (s : Scheduler dg) -> s.running = Just finishThis -> Disjoint s.pending (finishThis :: s.finished) 
-pdjfOnComplete (MkScheduler pending _ (Just finishThis) finished _ _ _ pdje pdjf) Refl =
+pdjfOnComplete (MkScheduler pending _ (Just finishThis) finished _ _ _ pdje pdjf _) Refl =
   let
     nothingPendingIsFinishThis : All (\thing => Not (thing = finishThis)) pending
       = propImplies (\_ => notElemSingletonNotEq) pdje
@@ -98,20 +100,25 @@ pdjfOnComplete (MkScheduler pending _ (Just finishThis) finished _ _ _ pdje pdjf
 
 total
 pdjrOnStart : {something : Task} -> (s : Scheduler dg) -> s.ready = something::rest -> Disjoint s.pending rest
-pdjrOnStart (MkScheduler pending (something :: rest) _ _ _ _ pdjr _ _) Refl = shrinkDj pdjr
+pdjrOnStart (MkScheduler pending (something :: rest) _ _ _ _ pdjr _ _ _) Refl = shrinkDj pdjr
 
 total
 pdjeOnStart : {startThis : Task} -> {0 rest : List Task} -> (s : Scheduler dg) -> s.ready = startThis::rest -> Disjoint s.pending [startThis]
-pdjeOnStart (MkScheduler pending (startThis :: rest) running _ _ _ pdjr _ _) Refl =
+pdjeOnStart (MkScheduler pending (startThis :: rest) running _ _ _ pdjr _ _ _) Refl =
   propImplies (\_ => notInListNotFirst) pdjr
 
+-- For some reason, even though pUnique is contained in the scheduler record,
+-- we have to pass it separately for the unifier to be happy...
+-- otherwise it treats it as a (rec : Scheduler ?dg) -> Unique rec.pending
+-- even though the LSP reports it as a Unique pending.
 total
-pdjrOnEnqueue : (s : Scheduler dg) -> (prf : readyThis `Elem` s.pending) -> Disjoint (remove s.pending prf) (readyThis::s.ready)
-pdjrOnEnqueue (MkScheduler pending ready _ _ _ _ pdjr _ _) prf =
+pdjrOnEnqueue : (s : Scheduler dg) -> (prf : readyThis `Elem` s.pending) -> Unique s.pending -> Disjoint (remove s.pending prf) (readyThis::s.ready)
+pdjrOnEnqueue (MkScheduler pending ready _ _ _ _ pdjr _ _ _) prf pUnique =
   let
     shrinkPendingDjReady : Disjoint (remove pending prf) ready
       = shrinkDjArb {prf = prf} pdjr
-    removedSoNotInPending : Not (readyThis `Elem` (remove pending prf)) = ?need_uniqueness
+    removedSoNotInPending : Not (readyThis `Elem` (remove pending prf))
+      = removeUniqueNotThere {prf = prf} pUnique
   in
   growDj shrinkPendingDjReady removedSoNotInPending
 
@@ -130,7 +137,8 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
     current.pendingAreDeps
     current.pdjr
     (forAllForSome (\_, inEmpty => elemInEmptyImpossible inEmpty Refl))
-    (pdjfOnComplete current prfRun))
+    (pdjfOnComplete current prfRun)
+    current.pUnique)
 
   Start :
     (current : Scheduler dg) ->
@@ -145,7 +153,8 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       current.pendingAreDeps
       (pdjrOnStart {something = first} current prfReady)
       (pdjeOnStart {startThis = first} current prfReady)
-      current.pdjf)
+      current.pdjf
+      current.pUnique)
 
   Enqueue :
     {dg : DAG ts} ->
@@ -163,13 +172,14 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       current.finished
       (coverMaintainOnEnqueue current pending)
       (removeFromSubsetStillSubset {prf = pending} current.pendingAreDeps)
-      (pdjrOnEnqueue current pending)
+      (pdjrOnEnqueue current pending current.pUnique)
       (shrinkDjArb {prf = pending} current.pdje)
-      (shrinkDjArb {prf = pending} current.pdjf))
+      (shrinkDjArb {prf = pending} current.pdjf)
+      (removeUniqueStillUnique {prf = pending} current.pUnique))
 
 total
 measure : (s : Scheduler dg) -> Nat
-measure (MkScheduler pending ready running _ _ _ _ _ _) = length (maybeToList running) + 2*(length ready) + 3*(length pending)
+measure (MkScheduler pending ready running _ _ _ _ _ _ _) = length (maybeToList running) + 2*(length ready) + 3*(length pending)
 
 total
 stepDecreasesMeasure : {a, b : Scheduler dg} -> a `Step` b -> measure a = S (measure b)

@@ -41,3 +41,19 @@ removeUniqueNotThere {prf = Here} (ConsUnique f x) Here = f Here
 removeUniqueNotThere {prf = Here} (ConsUnique f _) (KeepLooking y) = f (KeepLooking y)
 removeUniqueNotThere {prf = (KeepLooking further)} (ConsUnique f _) Here = f further
 removeUniqueNotThere {prf = (KeepLooking further)} (ConsUnique f x) (KeepLooking y) = removeUniqueNotThere {prf = further} x y
+
+public export total
+notHereNotInRemoved : {prf : Elem something xs} -> Not (thing`Elem`xs) -> Not (Elem thing (remove xs prf)) 
+notHereNotInRemoved {prf = Here} f x = f (KeepLooking x)
+notHereNotInRemoved {prf = (KeepLooking y)} f Here = f Here
+notHereNotInRemoved {prf = (KeepLooking y)} f (KeepLooking x) =
+  notHereNotInRemoved {prf = y} (notInListNotFurther f) x
+
+public export total
+removeUniqueStillUnique : {prf : Elem thing xs} -> Unique xs -> Unique (remove xs prf)
+removeUniqueStillUnique {prf = Here} (ConsUnique _ x) = x
+removeUniqueStillUnique {prf = (KeepLooking further)} (ConsUnique f x) =
+  let
+    ind = removeUniqueStillUnique {prf = further} x
+  in
+  ConsUnique (notHereNotInRemoved f) ind
