@@ -106,67 +106,89 @@ Suppose that for every scheduler state whose measure is equal to $n$ there exist
 
 We have shown that for every non-terminal scheduler state with an arbitrarily large measure, there is a finite trace to a finished state. Now consider a starting state. It is either terminal, or non-terminal. If it is terminal, then we have a trivial trace to a finished state, that is, itself. If it is non-terminal, then by the induction proof above, we can find a finite trace to a finished state. $qed$ 
 
+== What does it mean for a program to "prove" something?
+Logic is a tool for deriving new facts from existing ones while ensuring that the truth of these facts is preserved. A useful application of logic is to be able to show that objects have certain properties. A particular school of logic called constructivism asserts that to show an object exists, you must be able to find it; it is not sufficient to just assume it does not exist and derive a contradiction.
+
+So, under constructivist logic, you can think of a proposition as not just an assertion that something is true, but also evidence about why it must be true. Moreover, that evidence is not just the absence of falsehood, it too is an object with structure that can be manipulated. This idea naturally extends to proofs, which now can be viewed as functions which transform valid evidence for one fact into valid evidence for another fact while preserving the truth and this constructive property.
+
+Constructivist philosophy makes the relationship between proofs and computer programs much easier to see. Specifically, this connection is called the _Curry-Howard_ correspondence, which shows that propositions are interchangable with types, and proofs are interchangable with programs.
+
+Since a proposition is a type, then evidence for that proposition must be a value of that type. Propositions that are true should have evidence for their truth, while it should be impossible to provide evidence for a false proposition. Even though that view is simple, it is already a practical mindset to have when encoding propositions as type definitions. For instance, here's how it can help us write a type that encodes a proposition that $a <= b$ for natural numbers.
+
+Firstly, the proposition "$a$ is less than or equal to $b$" mentions two natural numbers, $a$ and $b$. Therefore, we must actually define a family of types for all the combinations of two natural numbers:
+```idris
+data LTE : Nat -> Nat -> Type
+```
+With this definition, all of the following are now valid _propositions_:
+ - `LTE 0 0` ($0 <= 0$)
+ - `LTE 51 9` ($51 <= 9$)
+ - `LTE 2 10` ($2 <= 10$)
+But not all of these propositions are necessarily true. The next step is to define what kind of _evidence_ we can use to justify this proposition. For instance, zero should be less than or equal to any other natural number:
+```idris
+ZLTEAnything : {someNumber : Nat} -> LTE 0 someNumber
+```
+Notice that by adding `someNumber` as a parameter to `ZLTEAnything`, we have quantified it as _any_ natural number, because there are absolutely no restrictions to the number we can pass to that constructor. This means that `ZLTEAnything` encodes the axiom $forall "someNumber" in NN [0 <= "someNumber"]$.
+
+Next, if we know that $a <= b$, then $(a+1) <= (b+1)$ should be true as well. This gives the second axiom/type constructor:
+```idris
+Bump : {a,b : Nat} -> LTE a b -> LTE (S a) (S b)
+```
+Or, in first-order logic notation: $forall a in NN. forall b in NN. [a <= b -> (a+1) <= (b+1)]$.
+
+Finally, putting these two axioms together gives the complete definition for the $<=$ proposition. For readability, the explicit quantification of variables will also be omitted, as Idris will automatically add them as implicit arguments for us.
+```idris
+data LTE : Nat -> Nat -> Type where
+  ZLTEAnything : LTE 0 someNumber
+  Bump : LTE a b -> LTE (S a) (S b)
+```
+Now it's possible to check whether or not the previous three propositions are true or not by attempting to construct evidence for them with these two axioms:
+ - `LTE 0 0` ($0 <= 0$) is trivially true. Since the lefthand number is a zero, `ZLTEAnything {someNumber = 0}` is valid evidence for this proposition. 
+ - `LTE 51 9` ($51 <= 9$) is false. Observe that the lefthand number is $51$, not zero, meaning that evidence for this must be constructed by applying the `Bump` axiom to evidence that $50 <= 8$. Repeating the same reasoning, we may eventually conclude that in order to construct evidence that $51 <= 9$, it is necessary to construct evidence that $42 <= 0$. However, by again analysing the axioms, we may deduce that this is not possible. There are only two we can apply: `ZLTEAnything`, which is evidence for $0 <= x$, and `Bump`, which is evidence for $S(a) <= S(b)$. The first axiom could not be used to prove this, because the left-hand number is $42$, not zero. The second axiom could also not be used to prove this, because the right-most number is not a non-zero number.
+ - `LTE 2 10` ($2 <= 10$) is true. Neither the left nor right-hand numbers are zero, so it is necessary to `Bump` a proof that $1 <= 9$. Once again, neither one nor nine are zero, so to get this subproof, it is necessary to `Bump` a proof that $0 <= 8$. This sub-subproof can finally be constructed with the `ZLTEAnything` axiom applied to the number eight. Putting this together, the _evidence_ that $2 <= 10$ is `Bump (Bump (ZLTEAnything {someNumber = 8}))`.
+
+Now that we've seen how to encode a proposition as a type, what remains is to see how a program can encode a proof. Can we show that our `LTE` relation is transitive?
+
+The starting point is the _type signature_ of the proof-function. Suppose we have evidence that $a <= b$ and $b <= c$. Can we use that to construct evidence that $a <= c$?
+```idris
+lteTrans : LTE a b -> LTE b c -> LTE a c
+```
+This proof can be done with cases. Each piece of evidence was either constructed with `ZLTEAnything` or `Bump`. This makes four combinations:
+1. `LTE a b` and `LTE b c` were both constructed with `ZLTEAnything`. This means `a` and `b` are both zero, while `c` is some other number. Therefore, the goal may be updated with this information: now we are trying to provide evidence for `LTE 0 c`, which can be done with `ZLTEAnything {someNumber = c}`.
+2. `LTE a b` was constructed with `ZLTEAnything`, while `LTE b c` was constructed with `Bump`. Much like the last case, knowing that the first constructor is `ZLTEAnything` tells us that `a = 0`, which reduces the goal to `LTE 0 c`. Therefore, `ZLTEAnything {someNumber = c}` is sufficient evidence.
+3. `LTE a b` was constructed with `Bump`, while `LTE b c` was constructed with `ZLTEAnything`. If this is the case, we gather some information: `a` and `b` are both successors of some natural number, and `b` is zero. This is a contradiction, because `b` cannot both be zero and nonzero at the same time. Therefore, we have no obligation to prove anything in this case, since it's impossible to provide this combination of evidence.
+4. `LTE a b` and `LTE b c` were both constructed by `Bump`ing a subproof. Thus, we can gather that:
+  - `a = S x` for some `x`
+  - `b = S y` for some `y` 
+  - `c = S z` for some `z`
+  - There is evidence that `LTE x y` and `LTE y z` from the subproofs that were `Bump`ed.
+  Here, we can call the proof-function recursively to get evidence that `LTE x z` from the evidence that `LTE x y` and `LTE y z`. Because `x, y, z` are all strictly smaller than `a, b, c`, eventually this function must reach one of its base cases. We may then apply `Bump` to this result to obtain `LTE (S x) (S z)`, which is the goal.
+
+And here is the Idris2 implementation of the function:
+```idris
+total
+lteTrans : LTE a b -> LTE b c -> LTE a c
+lteTrans ZLTEAnything ZLTEAnything = ZLTEAnything
+lteTrans ZLTEAnything (Bump subprf) = ZLTEAnything
+lteTrans (Bump subprf) ZLTEAnything impossible
+lteTrans (Bump subprfA) (Bump subprfB) = Bump (lteTrans subprfA subprfB)
+```
+There are a few notable things about this function. Firstly, it is substantially more terse than the preceeding written proof. Secondly, there is a `total` annotation at the top.
+
+The `total` annotation forces the compiler to verify that the function is _covering_, meaning it should be defined for all inputs, and that it eventually terminates. I will not mention covering because it's pretty easy to see why you might want that property for a proof-function and how you would verify it. On the other hand, termination is a notable property: it is not trivial to verify in general, and if a function which computes evidence does not terminate, it means the proof is not sound.
+
+Consider the following function. The type signature can be interpreted as "for any proposition, return evidence of that proposition," and the implementation goes into an endless recursive loop:
+```idris
+anyProof : {a : Type} -> a
+anyProof = anyProof
+```
+Thus, `anyProof {a = LTE 1 0}` is valid evidence that $1 < 0$ as far as the type checker is concerned, although in practice asking the program to actually _provide_ this evidence will cause it to loop forever. Clearly, this is not desirable, but unfortunately, there is no way to verify whether or not an arbitrary program will terminate. Thus, the totality checker in Idris works conservatively: any program it verifies to be total is actually total, but it will not accept every total program. In particular, all of the following must be true for a function to be verified as total:
+1. It is covering
+2. Every function the implementation calls is also total
+3. In a recursive call, one argument must be _syntactially smaller_. That is, it must be a sub-term of the current argument. 
+The totality checker is clever enough that usually, no manual intervention by the programmer is required. However, for proofs that instead use a strictly decreasing measure function to justify termination, some more work is required, which will be discussed in more detail at the end of the idris section.
+
+Finally, it is worth mentioning why the idris2 proof is so terse, as it will provide a bit of context when we later discuss the languages' tooling and compare it to tactic-based theorem proving like Rocq. The compactness is mostly because the type checker is only concerned with verifying that the provided values are well-formed and that they are evidence for the relevant proposition, not some other one. Much of what was done in the written transitivity proof is deducing information based on the constructors of the input evidence, using it to refine a goal, or justifying that the information is contradictiory. The idris type checker does this all automatically through a process called unification; We did not have to mention parameters like `someNumber` at all because the unification process found an assignment which made the expression type check. We also did not have to justify why the second case was impossible, as the type checker could already see the contradiction, although sometimes it does need a bit of help. Finally, we didn't need to justify that the recursive call would terminate, because the totality checker could see that its arguments were syntactically smaller.
+
+
+
 == Writing the Proofs in Idris2
-
-One complication with encoding the above proofs in Idris2 is the absence of a `Set` type in the standard library which is useful for theorem proving. The provided sets (found in `Data.SortedSet`) are instead intended for use in general programming, and thus do not expose any set-related propositions, like membership, equality, or a subset relation. We will first have to define this ourselves.
-
-The simplest set-like structure available to us is the inductively defined `List` type. We will use this as a base and define the following types:
-```idris
--- Proof that x is in xs
-data Elem : a -> List a -> Type where
-  Here : Elem x (x :: xs)
-  KeepLooking : Elem x rest -> Elem x (something::rest)
-
--- Proof that a predicate is true of all the elements in a list
-data All : (pred : a -> Type) -> List a -> Type where
-  VacuouslyTrue : All pred []
-  (::) : {x : a} -> pred x -> All pred xs -> All pred (x::xs)
-
--- If p is true of every element in es, and for any e, p of e implies p' of e, then p' is true of every element in es.
-propImplies : {prem1, prem2 : a -> Type} -> ((e : a) -> prem1 e -> prem2 e) -> All prem1 es -> All prem2 es
-propImplies f VacuouslyTrue = VacuouslyTrue
-propImplies f (cur :: rest) = f _ cur :: propImplies f rest
-```
-We can then use these to define a subset equality relation between two lists, and prove that it is indeed an equivalence relation.
-```idris
-Subset : List a -> List a -> Type
-Subset xs ys = All (`Elem`ys) xs
-
-SsEq : List a -> List a -> Type 
-SsEq a b = (a `Subset` b, b `Subset` a) 
-
-extractPrf : x `Elem` xs -> All prop xs -> prop x
-extractPrf Here (y :: _) = y
-extractPrf (KeepLooking y) (_ :: w) = extractPrf y w
-
--- Subset reflexivity
-listContainsItsContents : {list : _} -> All (`Elem`list) list
-listContainsItsContents {list = []} = VacuouslyTrue
-listContainsItsContents {list = (x :: xs)} =
-  let
-    ind = listContainsItsContents {list = xs}
-    xIsHere : x `Elem` (x::xs) = Here
-    ifTheyreInHereTheyreInTheSuperset = propImplies (\_ => KeepLooking) ind
-  in
-  xIsHere :: ifTheyreInHereTheyreInTheSuperset
-
-ssEqRefl : {a : _} -> a `SsEq` a
-ssEqRefl = (listContainsItsContents, listContainsItsContents)
-
-ssEqSym : a `SsEq` b -> b `SsEq` a
-ssEqSym (x, y) = (y, x)
-
-ssEqTrans : {a,b,c : _} -> a `SsEq` b -> b `SsEq` c -> a `SsEq` c
-ssEqTrans (assb, bssa) (bssc, cssb) =
-  let
-    assc = propImplies (\_, einb => extractPrf einb bssc) assb
-    cssa = propImplies (\_, einb => extractPrf einb bssa) cssb
-  in
-  (assc, cssa)
-```
-Next, we will need to model a directed acyclic graph. Traditional graphs (that is, a set of vertices and an adjacency relation) are difficult to model ergonomically in Idris because of the aforementioned lack of sets, and also because they are not inductively defined. Instead, we can use the fact that our dependency graph must be acyclic to construct it inductively by starting with an empty graph and adding sources (nodes with no incoming edges.) Not needing to prove acyclicity will make the code easier to work with.
-```idris
-data DAG : List Task -> Type where
-  Empty : DAG []
-  AddTask : (t : Task) -> (deps : List Task) -> deps `Subset` tasks -> DAG tasks -> DAG (t :: tasks)
-```
