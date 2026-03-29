@@ -167,9 +167,7 @@ And here is the Idris2 implementation of the function:
 ```idris
 total
 lteTrans : LTE a b -> LTE b c -> LTE a c
-lteTrans ZLTEAnything ZLTEAnything = ZLTEAnything
-lteTrans ZLTEAnything (Bump subprf) = ZLTEAnything
-lteTrans (Bump subprf) ZLTEAnything impossible
+lteTrans ZLTEAnything _ = ZLTEAnything
 lteTrans (Bump subprfA) (Bump subprfB) = Bump (lteTrans subprfA subprfB)
 ```
 There are a few notable things about this function. Firstly, it is substantially more terse than the preceding written proof. Secondly, there is a `total` annotation at the top.
@@ -187,8 +185,180 @@ Thus, `anyProof {a = LTE 1 0}` is valid evidence that $1 < 0$ as far as the type
 3. In a recursive call, one argument must be _syntactially smaller_. That is, it must be a sub-term of the current argument. 
 The totality checker is clever enough that usually, no manual intervention by the programmer is required. However, for proofs that instead use a strictly decreasing measure to justify termination, some more work is required, which will be discussed in more detail at the end of the Idris section.
 
-Finally, it is worth mentioning why the Idris proof is so terse, as it will provide a bit of context when we later discuss the languages' tooling and compare it to tactic-based theorem proving like Rocq. The compactness is mostly because the type checker is only concerned with verifying that the provided values are well-formed and that they are evidence for the relevant proposition, not some other one. Much of what was done in the written transitivity proof is deducing information based on the constructors of the input evidence, using it to refine a goal, or justifying that the information is contradictiory. The type checker does this all automatically through a process called unification; We did not have to mention parameters like `someNumber` at all because the unification process found an assignment which made the expression type check. We also did not have to justify why the second case was impossible, as the type checker could already see the contradiction, although sometimes it does need a bit of help. Finally, we didn't need to justify that the recursive call would terminate, because the totality checker could see that its arguments were syntactically smaller.
+Sometimes it is also necessary to prove that a proposition does _not_ hold. For this, there needs to be a type which represents falsehood, or a contradiction. We have already established that in order to prove a proposition holds, it is necessary to provide direct evidence. Since the false proposition should never be true, there should be no way to construct any evidence for it at all. Thus, the type representing contradiction / falsehood is remarkably simple: it is merely a type with no constructors:
+```idris
+data Void
+```
+As there are no constructors, it is impossible to construct a _value_ of `Void`. Such a type with no values is called _uninhabited_, and any uninhabited type represents a contradiction. Crucially, there is a total function in the standard library which can provide evidence for any proposition given a value of any uninhabited type, much like the principle of explosion in classical logic:
+```
+absurd : Uninhabited t => t -> a
+```
+This function is technically sound because it's impossible to call. This raises a question: if a `Void` value is impossible to construct, how can it ever be in scope? This mostly comes down to the type checker being unable to automatically deduce that a certain combination of arguments is impossible (i.e. will result in a type or unification error if they are provided simultaneously). When this happens, the programmer is required to write a simpler lemma, all of whose inputs can be automatically verified as impossible, then figure out how to call it with the provided arguments. This is because the type checker will allow a function to return `Void` iff all inputs which could be passed to it would result in a type error if they existed.
+
+With the `Void` type, it is now possible to show that a proposition does _not_ hold by providing a function which takes evidence of the proposition and returns a `Void` value. In fact, this is exactly the definition of the `Not` proposition in Idris:
+```idris
+Not : Type -> Type
+Not prop = prop -> Void
+```
+Working with such functions accounts for the other cases in which there may be a `Void` value in scope.
 
 
+Finally, it is worth mentioning why the Idris proof is so terse, as it will provide a bit of context when we later discuss the languages' tooling and compare it to tactic-based theorem proving like Rocq. The compactness is mostly because the type checker is only concerned with verifying that the provided values are well-formed and that they are evidence for the relevant proposition, not some other one. Much of what was done in the written transitivity proof is deducing information based on the constructors of the input evidence, using it to refine a goal, or justifying that the information is contradictiory. The type checker does this all automatically through a process called unification; We did not have to mention parameters like `someNumber` at all because the unification process found an assignment which made the expression type check. We also did not have to justify why the third case was impossible (or mention it at all), as the type checker could already see the contradiction, although sometimes it does need a bit of help. Finally, we didn't need to justify that the recursive call would terminate, because the totality checker could see that its arguments were syntactically smaller.
 
 == Writing the Proofs in Idris2
+
+In the pen-and-paper proof, we extensively used sets and graphs. Neither of these constructs are present in the standard library. Sorted sets can be found in the `Data.SortedSet` module, but this data structure is intended for ordinary programming and not theorem proving.
+
+Furthermore, both data structures should be inductively defined as this makes them substantially easier to work with in proofs, most of which are done by structural induction.
+
+Sets can be represented with standard inductively defined lists:
+```idris
+data List a
+  = []
+  | a :: List a
+```
+These do not behave strictly like mathematical sets. Namely, there is an order baked into the structure, and there is also no guarantee of uniqueness. However, when these properties are strictly needed, they can be bundled with the list. Some very helpful propositions are also defined.
+
+First is a list membership proof. This is also available in the `Data.List.Elem` module, but some of the lemmas we need are not provided and have to be defined here. These lemmas are:
+ - An element can not be in an empty list
+ - If an element is not in a list, it is not in the tail of a list
+ - If an element is not in a list, it is not in the head of the list 
+ - If an element is in a list, but is not in the head of the list, then it must be in the tail of the list
+ - If an element `a` is not in a list, and another element `b` is in the list, then `a` is not equal to `b`
+ - If an element `a` is in a singleton list `[b]`, then `a` is equal to `b`
+ - If an element `a` is not in a singleton list `[b]`, then `a` is not equal to `b`
+
+```idris
+public export
+data Elem : a -> List a -> Type where
+  Here : Elem x (x::xs)
+  KeepLooking : Elem x rest -> Elem x (something :: rest)
+
+test : Elem 2 [0,1,2,3]
+test = KeepLooking (KeepLooking Here)
+
+public export total
+elemInEmptyImpossible : Elem _ list -> list = [] -> Void
+elemInEmptyImpossible Here Refl impossible
+elemInEmptyImpossible (KeepLooking x) Refl impossible
+
+public export total
+notInListNotFurther : Not (thing `Elem` (aHead::aTail)) -> Not (thing `Elem` aTail)
+notInListNotFurther f Here = f (KeepLooking Here)
+notInListNotFurther f (KeepLooking x) = f (KeepLooking (KeepLooking x))
+
+public export total
+notInListNotFirst : Not (thing `Elem` (aHead::aTail)) -> Not (thing `Elem` [aHead])
+notInListNotFirst f Here = f Here
+notInListNotFirst f (KeepLooking x) = elemInEmptyImpossible x Refl
+
+public export total
+notInHeadInTail : (notHead : Not (elem = first)) -> (inList : elem `Elem` (first::rest)) -> elem `Elem` rest
+notInHeadInTail notHead Here = absurd (notHead Refl)
+notInHeadInTail _ (KeepLooking x) = x
+
+public export total
+notEqByMembership : Not (a `Elem` someList) -> b `Elem` someList -> Not (a = b)
+notEqByMembership {someList = b :: restList} aInXsContra Here aIsB =
+  let
+    hereIsContra = replace {p = \lhs => lhs `Elem` (b :: restList) -> Void} aIsB aInXsContra
+  in
+  hereIsContra Here
+notEqByMembership {someList = something :: restList} aInXsContra (KeepLooking bFurther) aIsB =
+  let
+    aFurther = replace {p = \lhs => lhs`Elem`restList} (sym aIsB) bFurther
+    aHere : a `Elem` (something::restList) = KeepLooking aFurther
+  in
+  aInXsContra aHere
+
+public export total
+elemSingletonEq : a `Elem` [b] -> a = b
+elemSingletonEq Here = Refl
+elemSingletonEq (KeepLooking x) = absurd (elemInEmptyImpossible x Refl)
+
+public export total
+notElemSingletonNotEq : Not (a `Elem` [b]) -> Not (a = b)
+notElemSingletonNotEq f Refl = f Here
+```
+
+Next is a proof that a proposition is true of all elements in a list. I could not find this structure in the standard library and thus everything is defined here. Namely:
+ - If $P(x) -> P'(x)$ and $forall e in "es" P(e)$ then $forall e in "es" P'(e)$
+ - If $P$ is true of all elements in `xs`, and `x` is in `xs`, then $P$ is true of `x`
+ - If either $P$ or $Q$ is true of all elements in `xs`, then either $P$ is true of all elements in `xs`, or there is one element `x` in `xs` such that $Q$ is true of `x`
+ - If a false proposition is true for all elements in a list, then that list must be empty
+ - If something is universally true for all `x`, then that property is true for all elements of any list of `x`
+ - If nothing in a list is equal to `x`, then `x` is not in that list
+```idris
+public export
+data All : (pred : a -> Type) -> List a -> Type where
+  VacuouslyTrue : All pred []
+  (::) : {x: a} -> pred x -> All pred xs -> All pred (x :: xs)
+
+public export total
+propImplies : {prem1, prem2 : a -> Type} -> ((e : a) -> prem1 e -> prem2 e) -> All prem1 es -> All prem2 es
+propImplies f VacuouslyTrue = VacuouslyTrue
+propImplies f (cur :: rest) = f _ cur :: propImplies f rest
+
+public export total
+extractPrf : x `Elem` xs -> All prop xs -> prop x
+extractPrf Here (y :: _) = y
+extractPrf (KeepLooking y) (_ :: w) = extractPrf y w
+
+public export total
+allAOrBMeansAllAOrOneB : {0 a : Type} -> {es : List a} -> {propA, propB : a -> Type} -> All (\e => Either (propA e) (propB e)) es -> Either (All propA es) (e ** (propB e, e `Elem` es))
+allAOrBMeansAllAOrOneB VacuouslyTrue = Left VacuouslyTrue
+allAOrBMeansAllAOrOneB ((::) {x=thisElem} aOrB rest) =
+  case aOrB of
+       (Left isA) =>
+          case allAOrBMeansAllAOrOneB rest of
+               (Left restAllA) => Left (isA :: restAllA)
+               (Right (restOneB ** (prfB, prfElemRest))) => Right (restOneB ** (prfB, KeepLooking prfElemRest))
+       (Right isB) => Right (thisElem ** (isB, Here))
+
+public export total
+falsePropEmptyList : All (\e => Void) es -> es = []
+falsePropEmptyList VacuouslyTrue = Refl
+falsePropEmptyList (someVoid :: _) = absurd someVoid
+
+public export total
+forAllForSome : {as : List a} -> {prop : a -> Type} -> ((x : a) -> prop x) -> All prop as
+forAllForSome {as = []} _ = VacuouslyTrue
+forAllForSome {as = (first :: rest)} prfMaker = (prfMaker first) :: (forAllForSome prfMaker)
+
+public export total
+nothingEqNotElem : All (\thing => Not (thing = x)) stuff -> Not (x `Elem` stuff)
+nothingEqNotElem VacuouslyTrue z = elemInEmptyImpossible z Refl
+nothingEqNotElem (fstThingNotX :: _) Here = fstThingNotX Refl
+nothingEqNotElem (_ :: restThingsNotX) (KeepLooking xFurther) =
+  nothingEqNotElem restThingsNotX xFurther
+```
+Lastly, there is a proof that a proposition is true of at least one element in the list. It is used to define set covers:
+```
+public export
+data One : (pred : a -> Type) -> List a -> Type where
+  ThisOne : (x : a) -> pred x -> One pred (x::rest) 
+  Further : One pred xs -> One pred (x::xs)
+
+public export total
+Cover : List (List a) -> List a -> Type
+xs `Cover` y = All (\elem => One (\subset => elem `Elem` subset) xs ) y
+```
+
+
+The most important and most substantial change is the representation of the dependency graph. Instead of using a vertex set and an adjacency relation alongside a proof that the graph is cyclic, it is substantially easier to inductively construct a DAG by starting with an empty graph and repeatedly adding sources. This will be of great help for showing we may always find an enabled task. Tasks themselves are a wrapper over natural numbers. It does not matter what their exact type is, other than that equality must be decideable for that type. Finally, we must define what "dependencies" of a task actually are with the `deps` function.
+
+```idris
+Task : Type
+Task = Nat
+
+public export
+data DAG : List Task -> Type where
+  Empty : DAG []
+  AddTask : (t : Task) -> (deps : List Task) -> Not (t `Elem` tasks) -> deps `Subset` tasks -> DAG tasks -> DAG (t :: tasks)
+
+public export total
+deps : {ts : List Task} -> DAG ts -> (t : Task) -> t `Elem` ts -> List Task
+deps (AddTask t ds _ _ _) t Here = ds
+deps (AddTask _ _ _ _ subGraph) t (KeepLooking further) = deps subGraph t further
+```
+
