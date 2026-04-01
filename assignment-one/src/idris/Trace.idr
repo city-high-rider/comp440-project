@@ -1,7 +1,9 @@
 module Trace
 
 import All
+import Control.WellFounded
 import Data.List
+import Data.Nat
 import Elem
 import Decidable.Equality
 import Remove
@@ -112,7 +114,7 @@ pdjeOnStart (MkScheduler pending (startThis :: rest) running _ _ _ pdjr _ _ _) R
 -- otherwise it treats it as a (rec : Scheduler ?dg) -> Unique rec.pending
 -- even though the LSP reports it as a Unique pending.
 total
-pdjrOnEnqueue : (s : Scheduler dg) -> (prf : readyThis `Elem` s.pending) -> Unique s.pending -> Disjoint (remove s.pending prf) (readyThis::s.ready)
+pdjrOnEnqueue : {readyThis : Task} -> (s : Scheduler dg) -> (prf : readyThis `Elem` s.pending) -> Unique s.pending -> Disjoint (remove s.pending prf) (readyThis::s.ready)
 pdjrOnEnqueue (MkScheduler pending ready _ _ _ _ pdjr _ _ _) prf pUnique =
   let
     shrinkPendingDjReady : Disjoint (remove pending prf) ready
@@ -177,12 +179,6 @@ data Step : Scheduler dg -> Scheduler dg -> Type where
       (shrinkDjArb {prf = pending} current.pdjf)
       (removeUniqueStillUnique {prf = pending} current.pUnique))
 
-total
-measure : (s : Scheduler dg) -> Nat
-measure (MkScheduler pending ready running _ _ _ _ _ _ _) = length (maybeToList running) + 2*(length ready) + 3*(length pending)
-
-total
-stepDecreasesMeasure : {a, b : Scheduler dg} -> a `Step` b -> measure a = S (measure b)
 
 public export
 data Trace : Scheduler dg -> Scheduler dg -> Type where
@@ -262,14 +258,70 @@ findStep (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps pdjr pd
 findStep (MkScheduler [] [] Nothing finished cover pendingAreDeps _ _ _ _) =
   Left (Refl, Refl, Refl, propImplies (onlyFinishedElemAllFinished {ts = ts}) cover)
 
-partial
+total
+measure : (s : Scheduler dg) -> Nat
+measure (MkScheduler pending ready running _ _ _ _ _ _ _) = length (maybeToList running) + 2*(length ready) + 3*(length pending)
+
+total
+justToListLenOne : m = Just x -> length (maybeToList m) = 1
+justToListLenOne Refl = Refl
+
+total
+nothingToListLenZero : m = Nothing -> length (maybeToList m) = 0
+nothingToListLenZero Refl = Refl
+
+total
+lengthNe : {0 someList, aTail : List a} -> someList = aHead::aTail -> length someList = S (length aTail)
+lengthNe Refl = Refl
+
+total
+weirdLem : {0 aHead : a} -> {someList : List a} -> someList = aHead::aTail -> (theTail ** theTail = aTail)
+weirdLem {someList = (_ :: aTail)} Refl = (aTail ** Refl)
+
+total
+stepDecreasesMeasure : {ts : List Task} -> {dg : DAG ts} -> {a, b : Scheduler dg} -> a `Step` b -> measure a = S (measure b)
+stepDecreasesMeasure (Complete (MkScheduler pending ready running finished _ _ _ _ _ _) finishThis prfRun) =
+  rewrite justToListLenOne prfRun in Refl
+stepDecreasesMeasure (Start (MkScheduler pending ready running finished _ _ _ _ _ _) prfReady prfIdle) =
+  rewrite nothingToListLenZero prfIdle in
+  rewrite lengthNe prfReady in
+  let
+    -- we need this because the totality checker freaks out if we expand ready.
+    -- also adding any let or case block introduces a dependency on ts for some reason.
+    (tl ** prfTl) = weirdLem prfReady
+  in
+  rewrite sym prfTl in
+  rewrite sym (plusSuccRightSucc (length tl) (plus (length tl) 0)) in
+  Refl
+stepDecreasesMeasure (Enqueue (MkScheduler pending ready running finished _ _ _ _ _ _) readyThis pendingPrf _ _ _ _) =
+  rewrite sym (removeShrinkLen {xs = pending, prf = pendingPrf}) in
+  rewrite sym (plusSuccRightSucc (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0)) in
+  rewrite sym (plusSuccRightSucc (length (remove pending pendingPrf)) (S (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0)))) in
+  rewrite sym (plusSuccRightSucc (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0))) in
+  rewrite sym (plusSuccRightSucc (plus (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) (S (S ((plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0))))))) in
+  rewrite sym (plusSuccRightSucc (plus (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) (S ((plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0)))))) in
+  rewrite sym (plusSuccRightSucc (plus (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) ((plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0))))) in
+  rewrite sym (plusSuccRightSucc (length ready) (plus (length ready) 0)) in
+  rewrite sym (plusSuccRightSucc (length (maybeToList running)) (S (plus (length ready) (plus (length ready) 0)))) in
+  rewrite sym (plusSuccRightSucc (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) in
+  Refl
+
+Sized (Scheduler dg) where
+  size = measure
+
+total
+findTraceHelper : {ts : List Task} -> {dg : DAG ts} -> (cur : Scheduler dg) -> (rec : (next : Scheduler dg) -> Smaller next cur -> (finish : Scheduler dg ** (Finished finish, Trace next finish))) -> (finish : Scheduler dg ** (Finished finish, Trace cur finish))
+findTraceHelper cur rec =
+  case findStep cur of
+       Left isDone => (cur ** (isDone, StartHere cur))
+       Right (nextOne ** step) =>
+        let
+          measureDec = stepDecreasesMeasure step
+          (last ** (lastFinished, restTrace)) = rec nextOne (rewrite measureDec in reflexive {ty = Nat, rel = LTE})
+        in
+        (last ** (lastFinished, WithStep step restTrace))
+
+total
 findTrace : {ts : List Task} -> {dg : DAG ts} -> (s : Scheduler dg) -> (finish : Scheduler dg ** (Finished finish, Trace s finish))
-findTrace s =
-  case findStep s of
-       Left finishPrf => (s ** (finishPrf, StartHere s))
-       Right (next ** step) =>
-          let
-            (finishedState ** (finishPrf, restOfTrace)) = findTrace next
-          in
-          (finishedState ** (finishPrf, WithStep step restOfTrace))
+findTrace = sizeInd {P = \sched => (finish : Scheduler dg ** (Finished finish, Trace sched finish))} findTraceHelper
 

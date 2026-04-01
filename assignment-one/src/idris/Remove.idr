@@ -57,3 +57,13 @@ removeUniqueStillUnique {prf = (KeepLooking further)} (ConsUnique f x) =
     ind = removeUniqueStillUnique {prf = further} x
   in
   ConsUnique (notHereNotInRemoved f) ind
+
+public export total
+removeShrinkLen : {xs : List a} -> {prf : Elem x xs} -> S (length (remove xs prf)) = length xs
+removeShrinkLen {xs = []} = absurd (elemInEmptyImpossible prf Refl)
+removeShrinkLen {xs = (_ :: _)} {prf = Here} = Refl
+removeShrinkLen {xs = (_ :: rest)} {prf = (KeepLooking z)} =
+  let
+    ind = removeShrinkLen {xs = rest, prf = z}
+  in
+  rewrite ind in Refl
