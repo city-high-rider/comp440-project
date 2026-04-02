@@ -31,6 +31,11 @@ notInHeadInTail notHead Here = absurd (notHead Refl)
 notInHeadInTail _ (KeepLooking x) = x
 
 public export total
+notInHeadNotInTailNotInList : Not (thing = head) -> Not (thing `Elem` tail) -> Not (thing `Elem` (head::tail))
+notInHeadNotInTailNotInList notHead _ Here = notHead Refl
+notInHeadNotInTailNotInList _ notInTail (KeepLooking further) = notInTail further
+
+public export total
 notEqByMembership : Not (a `Elem` someList) -> b `Elem` someList -> Not (a = b)
 notEqByMembership {someList = b :: restList} aInXsContra Here aIsB =
   let

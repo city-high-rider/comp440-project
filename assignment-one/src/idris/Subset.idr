@@ -2,6 +2,7 @@ module Subset
 
 import Elem
 import All
+import Decidable.Equality
 
 %default total
 
@@ -75,17 +76,23 @@ notInBothSym : {xs,ys : List a} -> Not (x ** (x`Elem`xs, x`Elem`ys)) -> Not (x *
 notInBothSym contra (x ** (inYs, inXs)) = contra (x ** (inXs, inYs))
 
 public export total
-growDj : All (\thing => Elem thing oldSet -> Void) ys -> (Elem newThing ys -> Void) -> All (\thing => Elem thing (newThing :: oldSet) -> Void) ys
+growDjHelper : DecEq a => {e, newThing : a} -> (Elem e oldSet -> Void) -> Either (Elem e (newThing :: oldSet) -> Void) (e = newThing)
+growDjHelper eNotInOld =
+  case decEq e newThing of
+       (Yes prf) => Right prf
+       (No eNotNew) => Left (notInHeadNotInTailNotInList eNotNew eNotInOld)
 
 public export total
-disjointSym : {xs, ys : List a} -> Disjoint xs ys -> Disjoint ys xs
-disjointSym VacuouslyTrue = forAllForSome (\_, prf => elemInEmptyImpossible prf Refl)
-disjointSym (firstNotInYs :: restNotInYs) =
+growDj : DecEq a => {newThing : a} -> {oldSet, ys : List a} -> All (\thing => Elem thing oldSet -> Void) ys -> (Elem newThing ys -> Void) -> All (\thing => Elem thing (newThing :: oldSet) -> Void) ys
+growDj ysNotInOld f =
   let
-    ind = disjointSym restNotInYs
+    ysEitherNotInNewOrEqNewElement : All (\thing => Either (Not (Elem thing (newThing::oldSet))) (thing=newThing)) ys
+      = propImplies (\e => growDjHelper) ysNotInOld
   in
-  growDj ind firstNotInYs
-   
+  case allAOrBMeansAllAOrOneB ysEitherNotInNewOrEqNewElement of
+       (Left nothingInNewSet) => nothingInNewSet
+       (Right (newThing ** (Refl, inYs))) => absurd (f inYs)
+
 public export total
 shrinkDj : Disjoint xs (y::ys) -> Disjoint xs ys
 shrinkDj VacuouslyTrue = VacuouslyTrue
