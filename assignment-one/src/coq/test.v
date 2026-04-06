@@ -74,8 +74,23 @@ Definition disjoint (S : Scheduler) : Prop :=
   (forall x, In x (R S) -> ~ In x (P S) /\ ~ In x (D S)) /\
   (forall x, In x (P S) -> ~ In x (D S)).
 
+Definition maxOneRun (S : Scheduler) : Prop :=
+    length (D S) = 0 \/ length (D S) = 1.
+
 Definition wfState (S : Scheduler) : Prop :=
-    covers S /\ disjoint S.
+    maxOneRun S /\ covers S /\ disjoint S.
+
+Lemma oneRunStep :
+    forall S S', maxOneRun S -> step S S' -> maxOneRun S'.
+Proof.
+    intros S S' fstOR Hstep.
+    destruct Hstep.
+        - right. auto.
+        - left. auto.
+        - destruct fstOR.
+            + left. assumption.
+            + right. assumption.
+Qed.
 
 Lemma inRemove :
     forall x y l, In x (remove Nat.eq_dec y l) -> In x l /\ x <> y.
@@ -104,6 +119,145 @@ Proof.
                 * left. assumption.
                 * right. apply IHl; assumption.
 Qed.
+
+Lemma lengthOneUnique :
+    forall (a : Type) (l : list a) (x y : a),
+    length l = 1 -> In x l -> In y l -> x = y.
+Proof.
+    intros a l x y Hlen Hinx Hiny.
+    destruct l as [| z zs].
+        - contradiction.
+        - destruct zs as [| z' zs'].
+            + destruct Hinx as [Hx | []].
+                destruct Hiny as [Hy | []].
+                subst.
+                reflexivity.
+            + simpl in Hlen. congruence.
+Qed.
+
+Lemma coverStep :
+    forall S S', covers S -> maxOneRun S -> step S S' -> covers S'.
+Proof.
+    intros S S' fstCvr fstOR HStep.
+    destruct HStep.
+        - intros x Hx.
+          destruct (fstCvr x Hx) as [HF | [HR | [HP | HD]]].
+            + simpl. left. assumption.
+            + simpl. destruct (Nat.eq_dec x t).
+                * subst. right. right. right. left. reflexivity.
+                * right. left. apply inRemoveInv; auto.
+            + simpl. right. right. left. assumption.
+            + rewrite H in HD. contradiction.
+        - intros x Hx.
+          destruct (fstCvr x Hx) as [HF | [HR | [HP | HD]]].
+            + simpl. left. right. assumption.
+            + simpl. right. left. assumption.
+            + simpl. right. right. left. assumption.
+            + simpl. destruct fstOR.
+                * apply length_zero_iff_nil in H0.
+                  rewrite H0 in H. contradiction.
+                * specialize (lengthOneUnique Task (D S) x t H0 HD H).
+                    intros.
+                    symmetry in H1.
+                    left. left. assumption.
+        - intros x Hx.
+          destruct (fstCvr x Hx) as [HF | [HR | [HP | HD]]].
+            + simpl. left. assumption.
+            + simpl. right. left. right. assumption.
+            + simpl. destruct (Nat.eq_dec t x).
+                * right. left. left. assumption.
+                * right. right. left. apply inRemoveInv.
+                    -- assumption.
+                    -- symmetry. assumption.
+            + simpl. right. right. right. assumption.
+Qed.
+
+
+Lemma wfPreserved :
+    forall S S', wfState S -> step S S' -> wfState S'.
+Proof.
+    intros S S' [Hcov Hdis] Hstep.
+    destruct Hstep.
+        (*ready -> running*)
+        - split.
+            (*coverage*)
+            + intros x Hx.
+              destruct (Hcov x Hx) as [HF | [HR | [HP | HD]]].
+                * left; assumption.
+                * destruct (Nat.eq_dec x t).
+                    -- subst. right. right. right. simpl. auto.
+                    -- right. left. simpl. apply inRemoveInv; auto.
+                * right. right. left. assumption.
+                * rewrite H in HD. contradiction.
+            (*disjointness*)
+            + split.
+                * intros x HxF. split.
+                    -- intro HR'. apply inRemove in HR'.
+                        simpl in HxF.
+                        destruct HR' as [HR _].
+                        destruct Hdis as [Hfds _].
+                        specialize (Hfds x HxF).
+                        destruct Hfds as [Hnir _].
+                        contradiction.
+                    -- split. 
+                        ++ simpl.
+                            simpl in HxF.
+                            destruct Hdis as [Hfds _].
+                            specialize (Hfds x HxF).
+                            destruct Hfds as [_ [xnp _]].
+                            assumption.
+                        ++ simpl in HxF.
+                            simpl.
+                            intro Hcontra.
+                            destruct Hcontra.
+                                ** symmetry in H1.
+                                    rewrite H1 in HxF.
+                                    destruct Hdis as [Hfds _].
+                                    specialize (Hfds t HxF).
+                                    destruct Hfds as [Hnrs _].
+                                    contradiction.
+                                ** assumption.
+                * split. intros x HxR. simpl in HxR. split.
+                    -- simpl.
+                        intros Hcontra.
+                        apply inRemove in HxR.
+                        destruct HxR as [Hxrs _].
+                        destruct Hdis as [_ [Hrds _]].
+                        specialize (Hrds x Hxrs).
+                        destruct Hrds as [Hnps _].
+                        contradiction.
+                    -- simpl.
+                        intro.
+                        destruct H1.
+                            ++ apply inRemove in HxR.
+                                destruct HxR as [_ Hnt].
+                                symmetry in H1.
+                                contradiction.
+                            ++ assumption.
+                    -- intros x HxP.
+                        simpl.
+                        simpl in HxP.
+                        intro.
+                        destruct H1.
+                            ++ rewrite H1 in H0.
+                                destruct Hdis as [_ [Hrds _]].
+                                specialize (Hrds x H0).
+                                destruct Hrds as [Hnp _].
+                                contradiction.
+                            ++ assumption.
+        (*running -> finished*)
+        - split.
+            + intros x Hx.
+              destruct (Hcov x Hx) as [HF | [HR | [HP | HD]]].
+                * simpl. left. right. assumption.
+                * simpl. right. left. assumption.
+                * simpl. right. right. left. assumption.
+                * simpl. left. left.
+
+                        
+                        
+
+
 
 
 
