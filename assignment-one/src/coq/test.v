@@ -172,87 +172,125 @@ Proof.
             + simpl. right. right. right. assumption.
 Qed.
 
+Lemma neq_sym :
+    forall a (x y : a), x <> y -> y <> x.
+Proof.
+    intros a x y H Hxy.
+    apply H.
+    symmetry.
+    assumption.
+Qed.
+
+Lemma disjointPreserved :
+    forall S S', disjoint S -> step S S' -> disjoint S'.
+Proof.
+    intros S S' fstDj Hstep.
+    destruct Hstep.
+        - repeat split.
+            + simpl in H1.
+              simpl.
+              destruct (Nat.eq_dec t x).
+                * subst.
+                  destruct fstDj as [Hdj _].
+                  specialize (Hdj x H1).
+                  destruct Hdj as [Hcontra _].
+                  contradiction.
+                * intro.
+                  apply inRemove in H2.
+                  destruct H2 as [Hcontra _].
+                  destruct fstDj as [Hfdj _].
+                  specialize (Hfdj x H1).
+                  destruct Hfdj as [Hnir _].
+                  contradiction.
+            + simpl in H1.
+              simpl.
+              destruct fstDj as [Hdj _].
+              specialize (Hdj x H1).
+              destruct Hdj as [_ [Hnp _]].
+              assumption.
+            + simpl in H1. simpl. intro. destruct H2.
+                * subst.
+                  destruct fstDj as [Hdj _].
+                  specialize (Hdj x H1).
+                  destruct Hdj as [Hcontra _].
+                  contradiction.
+                * assumption.
+            + simpl in H1. simpl.
+              apply inRemove in H1.
+              destruct H1 as [xrs _].
+              destruct fstDj as [_ [Hdj _]].
+              specialize (Hdj x xrs).
+              destruct Hdj as [Hdone _].
+              assumption.
+            + simpl in H1. simpl. intro. destruct H2.
+                * apply inRemove in H1.
+                  destruct H1 as [_ Hcontra].
+                  symmetry in H2.
+                  contradiction.
+                * assumption.
+            + intros x xinp xind. simpl in xind. simpl in xinp.
+              destruct xind.
+                * subst.
+                  destruct fstDj as [_ [Hdj _]].
+                  specialize (Hdj x H0).
+                  destruct Hdj as [Hcontra _].
+                  contradiction.
+                * contradiction.
+        - repeat split.
+            + intro. simpl in H0, H1. destruct H0.
+                * subst.
+                  destruct fstDj as [_ [Hdj _]].
+                  specialize (Hdj x H1).
+                  destruct Hdj. contradiction.
+                * destruct fstDj as [Hdj _].
+                  specialize (Hdj x H0).
+                  destruct Hdj. contradiction.
+            +  intro. simpl in H0, H1. destruct H0.
+                * subst.
+                  destruct fstDj as [_ [_ Hdj]].
+                  specialize (Hdj x H1). contradiction.
+                * destruct fstDj as [Hdj _].
+                  specialize (Hdj x H0).
+                  destruct Hdj as [_ [Hcontra _]].
+                  contradiction.
+            + intro. simpl in H0, H1. assumption.
+            + intro. simpl in H0, H1. destruct fstDj as [_ [Hdj _]].
+              specialize (Hdj x H0).
+              destruct Hdj. contradiction.
+            + intro. simpl in H0, H1. assumption.
+            + intros x xinp ctra. simpl in ctra. assumption.
+        - repeat split.
+            + intro. simpl in H0, H1. destruct H1.
+                * subst. destruct H as [H _].
+                  destruct fstDj as [Hdj _].
+                  specialize (Hdj x H0).
+                  destruct Hdj as [_ [Hcontra _]].
+                  contradiction.
+                * destruct fstDj as [Hdj _].
+                  specialize (Hdj x H0). firstorder.
+            + intro. simpl in H0, H1. apply inRemove in H1. firstorder.
+            + intro. simpl in H0, H1. firstorder.
+            + intro. simpl in H0, H1. destruct H0.
+                * apply inRemove in H1. firstorder.
+                * apply inRemove in H1. firstorder.
+            + intro. simpl in H0, H1. destruct H0.
+                * rewrite H0 in H. firstorder.
+                * firstorder.
+            + intros x xinpr xind. simpl in xind, xinpr.
+              apply inRemove in xinpr. firstorder.
+Qed.
+              
+    
 
 Lemma wfPreserved :
     forall S S', wfState S -> step S S' -> wfState S'.
 Proof.
-    intros S S' [Hcov Hdis] Hstep.
-    destruct Hstep.
-        (*ready -> running*)
+    intros S S' fstWf Hstep. destruct fstWf as [fstOR [fstCvr fstDj]]. split.
+        - apply (oneRunStep S S' fstOR) in Hstep. assumption.
         - split.
-            (*coverage*)
-            + intros x Hx.
-              destruct (Hcov x Hx) as [HF | [HR | [HP | HD]]].
-                * left; assumption.
-                * destruct (Nat.eq_dec x t).
-                    -- subst. right. right. right. simpl. auto.
-                    -- right. left. simpl. apply inRemoveInv; auto.
-                * right. right. left. assumption.
-                * rewrite H in HD. contradiction.
-            (*disjointness*)
-            + split.
-                * intros x HxF. split.
-                    -- intro HR'. apply inRemove in HR'.
-                        simpl in HxF.
-                        destruct HR' as [HR _].
-                        destruct Hdis as [Hfds _].
-                        specialize (Hfds x HxF).
-                        destruct Hfds as [Hnir _].
-                        contradiction.
-                    -- split. 
-                        ++ simpl.
-                            simpl in HxF.
-                            destruct Hdis as [Hfds _].
-                            specialize (Hfds x HxF).
-                            destruct Hfds as [_ [xnp _]].
-                            assumption.
-                        ++ simpl in HxF.
-                            simpl.
-                            intro Hcontra.
-                            destruct Hcontra.
-                                ** symmetry in H1.
-                                    rewrite H1 in HxF.
-                                    destruct Hdis as [Hfds _].
-                                    specialize (Hfds t HxF).
-                                    destruct Hfds as [Hnrs _].
-                                    contradiction.
-                                ** assumption.
-                * split. intros x HxR. simpl in HxR. split.
-                    -- simpl.
-                        intros Hcontra.
-                        apply inRemove in HxR.
-                        destruct HxR as [Hxrs _].
-                        destruct Hdis as [_ [Hrds _]].
-                        specialize (Hrds x Hxrs).
-                        destruct Hrds as [Hnps _].
-                        contradiction.
-                    -- simpl.
-                        intro.
-                        destruct H1.
-                            ++ apply inRemove in HxR.
-                                destruct HxR as [_ Hnt].
-                                symmetry in H1.
-                                contradiction.
-                            ++ assumption.
-                    -- intros x HxP.
-                        simpl.
-                        simpl in HxP.
-                        intro.
-                        destruct H1.
-                            ++ rewrite H1 in H0.
-                                destruct Hdis as [_ [Hrds _]].
-                                specialize (Hrds x H0).
-                                destruct Hrds as [Hnp _].
-                                contradiction.
-                            ++ assumption.
-        (*running -> finished*)
-        - split.
-            + intros x Hx.
-              destruct (Hcov x Hx) as [HF | [HR | [HP | HD]]].
-                * simpl. left. right. assumption.
-                * simpl. right. left. assumption.
-                * simpl. right. right. left. assumption.
-                * simpl. left. left.
+            + apply (coverStep S S' fstCvr fstOR Hstep).
+            + apply (disjointPreserved S S' fstDj Hstep).
+Qed.
 
                         
                         
