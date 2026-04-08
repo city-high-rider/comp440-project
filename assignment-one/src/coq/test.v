@@ -1,6 +1,8 @@
 Require Import List.
 Require Import Arith.
 Require Import Relations.
+Require Import Coq.Logic.Classical.
+Require Import Psatz.
 
 Import ListNotations.
 
@@ -63,6 +65,23 @@ Inductive step : Scheduler -> Scheduler -> Prop :=
                     P := remove Nat.eq_dec t (P S);
                     D := D S;
                 |}.
+
+Lemma measureDecreases:
+    forall S S', step S S' -> mu S' < mu S.
+Proof.
+    intros S S' Hstep.
+    destruct Hstep.
+        - unfold mu. rewrite H. cbn [F R P D].
+          simpl (length [t]). simpl (length []).
+          change (0 + 2 * length (R S) + 3 * length (P S)) with
+            (2 * length (R S) + 3 * length (P S)).
+          pose proof (Nat.add_lt_mono_r) as Hsub.
+          symmetry in Hsub.
+          apply Hsub with (p := 3 * length (P S)).
+          pose proof (remove_length_lt Nat.eq_dec (R S) t H0) as Hlen.
+          
+              
+            
 
 Variable allTasks : list Task.
 
@@ -133,6 +152,16 @@ Proof.
                 subst.
                 reflexivity.
             + simpl in Hlen. congruence.
+Qed.
+
+Lemma lengthOneNoTail :
+    forall a (l xs : list a) (x : a), l = (x :: xs) -> length l = 1 -> l = [x].
+Proof.
+    intros a l xs x prfCons Hlen.
+    subst.
+    destruct xs as [| y ys].
+        - reflexivity.
+        - simpl in Hlen. congruence.
 Qed.
 
 Lemma coverStep :
@@ -282,7 +311,7 @@ Qed.
               
     
 
-Lemma wfPreserved :
+Theorem wfPreserved :
     forall S S', wfState S -> step S S' -> wfState S'.
 Proof.
     intros S S' fstWf Hstep. destruct fstWf as [fstOR [fstCvr fstDj]]. split.
@@ -292,10 +321,79 @@ Proof.
             + apply (disjointPreserved S S' fstDj Hstep).
 Qed.
 
-                        
-                        
 
+Definition terminal (S : Scheduler) : Prop :=
+    ~ exists S', step S S'.
 
+Definition finished (S : Scheduler) : Prop :=
+    forall t, In t allTasks -> In t (F S).
+
+Lemma findNotFinished :
+    forall S, ~finished S -> covers S -> exists t,
+        In t (D S) \/ In t (R S) \/ In t (P S).
+Proof.
+    intros S Hnf Hcv.
+    apply not_all_ex_not in Hnf.
+    destruct Hnf as [t Hnf].
+    destruct (classic (In t allTasks)).
+        - specialize (Hcv t H). firstorder.
+        - exfalso. apply Hnf. intro. contradiction.
+Qed.
+
+Lemma findEnabled:
+    forall S, wfState S -> R S = [] -> D S = [] -> ~finished S -> exists p, enabled S p.
+Proof.
+    intros S [Hmax [Hcov Hdis]] noR noD noFinish.
+    assert (pne : P S <> []).
+        - destruct (P S) as [| p ps] eqn:NP.
+            + assert (finish : finished S).
+                * intros someT Hsti.
+                  specialize (Hcov someT Hsti).
+                  destruct Hcov as [inF | [inR | [inP | inD]]].
+                    -- assumption.
+                    -- rewrite noR in inR. contradiction.
+                    -- rewrite NP in inP. contradiction.
+                    -- rewrite noD in inD. contradiction.
+                * contradiction.
+            + congruence.
+        - destruct (P S) as [| p ps] eqn:NP.
+            + contradiction.
+            + 
+
+Theorem progress:
+    forall S, wfState S -> ~finished S -> exists S', step S S'.
+Proof.
+    intros S fstWf Hnf.
+    destruct fstWf as [fstOR [fstCvr fstDj]].
+    pose proof (findNotFinished S Hnf fstCvr).
+    destruct H as [t H].
+    destruct H as [HD | [HR | HP]].
+        - exists {|F := t :: F S; R := R S; P := P S; D := []|}.
+          apply complete. assumption.
+        - destruct (D S) as [| d ds] eqn:HD.
+            + exists {|F := F S; R := remove Nat.eq_dec t (R S); P := P S; D := [t]|}.
+              apply start; assumption.
+            + destruct fstOR.
+                * rewrite HD in H. simpl in H. congruence.
+                * pose proof (lengthOneNoTail Task (D S) ds d HD H).
+                  exists {|F := d :: F S; R := R S; P := P S; D := []|}.
+                  apply complete.
+                  rewrite H0. left. reflexivity.
+        - destruct (D S) as [| d ds] eqn:HD.
+            + destruct (R S) as [| r rs] eqn:HR.
+                (*lemma 2 goes here*)
+                * give_up.
+                * exists {|F := F S; R := remove Nat.eq_dec r (R S); P := P S; D := [r]|}.
+                  apply start.
+                    -- assumption.
+                    -- rewrite HR. left. reflexivity.
+            + destruct fstOR.
+                * rewrite HD in H. simpl in H. congruence.
+                * pose proof (lengthOneNoTail Task (D S) ds d HD H).
+                  exists {|F := d :: F S; R := R S; P := P S; D := []|}.
+                  apply complete.
+                  rewrite H0. left. reflexivity.
+Admitted.
 
 
 
