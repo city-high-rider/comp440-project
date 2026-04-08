@@ -66,6 +66,25 @@ Inductive step : Scheduler -> Scheduler -> Prop :=
                     D := D S;
                 |}.
 
+Lemma ltsSplit :
+    forall a b, a < S b -> a = b \/ a < b.
+Proof.
+    lia.
+Qed.
+
+Lemma ltSum:
+    forall a b, a < b -> exists n, (S n) + a = b.
+Proof.
+    intros a b Hlt. simpl. induction b.
+        - inversion Hlt.
+        - apply ltsSplit in Hlt. destruct Hlt.
+            + rewrite H. exists 0. auto.
+            + pose proof (IHb H) as He. destruct He.
+              symmetry in H0.
+              rewrite H0.
+              exists (S x). auto.
+Qed.
+
 Lemma measureDecreases:
     forall S S', step S S' -> mu S' < mu S.
 Proof.
@@ -79,9 +98,43 @@ Proof.
           symmetry in Hsub.
           apply Hsub with (p := 3 * length (P S)).
           pose proof (remove_length_lt Nat.eq_dec (R S) t H0) as Hlen.
-          
-              
-            
+          apply ltSum in Hlen. destruct Hlen.
+          replace (2 * length (R S)) with (2 * (Datatypes.S x + length (remove Nat.eq_dec t (R S)))).
+            + pose proof (Nat.mul_add_distr_l 2 (Datatypes.S x) (length (remove Nat.eq_dec t (R S)))).
+              rewrite H2.
+              apply Hsub with (p := 2 * length (remove Nat.eq_dec t (R S))).
+              lia.
+            + f_equal. assumption.
+        - unfold mu. cbn [F R P D]. simpl (length []).
+          pose proof (Nat.add_lt_mono_r) as Hsub.
+          symmetry in Hsub.
+          apply Hsub with (p := 3*length (P S)).
+          apply Hsub with (p := 2*length (R S)).
+          destruct (D S) as [| d ds].
+            + contradiction.
+            + simpl. lia.
+        - unfold mu. cbn [F R P D].
+          pose proof (Nat.add_lt_mono_l) as Hsub.
+          repeat rewrite <- Nat.add_assoc.
+          symmetry in Hsub.
+          apply Hsub with (p := length (D S)).
+          simpl (length (t :: R S)).
+          rewrite (Nat.mul_succ_r 2 (length (R S))).
+          repeat rewrite <- Nat.add_assoc.
+          apply Hsub with (p := 2*length(R S)).
+          destruct H as [H _].
+          pose proof (remove_length_lt Nat.eq_dec (P S) t H) as Hlen.
+          apply ltSum in Hlen. destruct Hlen.
+          replace (3 * length (P S)) with (3 * (Datatypes.S x + length (remove Nat.eq_dec t (P S)))).
+            + rewrite (Nat.mul_add_distr_l 3 (Datatypes.S x) (length (remove Nat.eq_dec t (P S)))).
+              pose proof (Nat.add_lt_mono_r) as HsubR.
+              symmetry in HsubR.
+              apply HsubR with (p := 3 * length (remove Nat.eq_dec t (P S))).
+              lia.
+            + f_equal. assumption.
+Qed. 
+
+
 
 Variable allTasks : list Task.
 
@@ -338,6 +391,41 @@ Proof.
     destruct (classic (In t allTasks)).
         - specialize (Hcv t H). firstorder.
         - exfalso. apply Hnf. intro. contradiction.
+Qed.
+
+Lemma mkPorf:
+    forall S, covers S -> (R S) = [] -> (D S) = [] ->
+        forall t, In t allTasks -> (In t (F S)) \/ (In t (P S)).
+Proof.
+    intros S Hcov Hrn Hdn t Hia.
+    destruct (Hcov t Hia) as [Hif | [Hir | [Hip | Hid]]].
+        - left. assumption.
+        - rewrite Hrn in Hir. contradiction.
+        - right. assumption.
+        - rewrite Hdn in Hid. contradiction.
+Qed. 
+
+Lemma allPorSomeQ :
+  forall (a : Type) (l : list a) (p q : a -> Prop),
+    (forall x, In x l -> p x \/ q x) ->
+    ( (forall x, In x l -> p x)
+    \/ (exists c, In c l /\ q c)).
+Proof.
+    intros a l p q Hporq.
+    induction l as [| h t Ih].
+        - left. intros x Hcontra. contradiction.
+        - destruct (Hporq h (or_introl eq_refl)) as [Hp | Hq].
+            + specialize (Ih (fun x Hx => Hporq x (or_intror Hx))).
+              destruct Ih as [Ihp | [c [Hc Hqc]]].
+                * left. intros y Hyin. simpl in Hyin. destruct Hyin.
+                    -- rewrite <- H. assumption.
+                    -- specialize (Ihp y H). assumption.
+                * right. exists c. split.
+                    -- simpl. right. assumption.
+                    -- assumption.  
+            + right. exists h. split.
+                * simpl. left. reflexivity.
+                * assumption.
 Qed.
 
 Lemma findEnabled:
