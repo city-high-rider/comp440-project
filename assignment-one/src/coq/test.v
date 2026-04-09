@@ -526,14 +526,17 @@ Proof.
                  - left. exact Hdep.
                 }
               destruct (allPorSomeQ Task (P S) _ _ HforallFlip) as [HallDeps | [c [HcP Hen]]].
-                * give_up.
+                * exfalso. give_up.
                 * exists c. exact Hen.
+Admitted.
+
 
 Theorem progress:
     forall S, wfState S -> ~finished S -> exists S', step S S'.
 Proof.
     intros S fstWf Hnf.
-    destruct fstWf as [fstOR [fstCvr fstDj]].
+    pose proof fstWf as fstWf'.
+    destruct fstWf' as [fstOR [fstCvr fstDj]].
     pose proof (findNotFinished S Hnf fstCvr).
     destruct H as [t H].
     destruct H as [HD | [HR | HP]].
@@ -551,7 +554,9 @@ Proof.
         - destruct (D S) as [| d ds] eqn:HD.
             + destruct (R S) as [| r rs] eqn:HR.
                 (*lemma 2 goes here*)
-                * give_up.
+                * destruct (findEnabled S fstWf HR HD Hnf) as [p Hen].
+                  exists {|F := F S; R := p :: (R S); P := remove Nat.eq_dec p (P S); D := (D S)|}.
+                    -- apply enqueue. exact Hen.
                 * exists {|F := F S; R := remove Nat.eq_dec r (R S); P := P S; D := [r]|}.
                   apply start.
                     -- assumption.
@@ -562,7 +567,7 @@ Proof.
                   exists {|F := d :: F S; R := R S; P := P S; D := []|}.
                   apply complete.
                   rewrite H0. left. reflexivity.
-Admitted.
+Qed.
 
 
 
