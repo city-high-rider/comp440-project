@@ -469,7 +469,7 @@ Qed.
 Lemma findEnabled:
     forall S, wfState S -> R S = [] -> D S = [] -> ~finished S -> exists p, enabled S p.
 Proof.
-    intros S [Hmax [Hcov Hdis]] noR noD noFinish.
+    intros S [Hmax [Hcov [Hdis Hst]]] noR noD noFinish.
     assert (pne : P S <> []).
         - destruct (P S) as [| p ps] eqn:NP.
             + assert (finish : finished S).
@@ -489,7 +489,13 @@ Proof.
               destruct HallFSomeP as [HallF | HSomeP].
                 * exists p. split.
                     -- rewrite NP. simpl. left. reflexivity.
-                    -- intros d Hd. 
+                    -- intros d Hd.
+                       assert (In p allTasks).
+                        ++ apply (Hst p). right. right. left.
+                           rewrite NP. simpl. left. reflexivity.
+                        ++ specialize (E_closed d p Hd H).
+                           specialize (HallF d E_closed). assumption.
+                *
 
 Theorem progress:
     forall S, wfState S -> ~finished S -> exists S', step S S'.
