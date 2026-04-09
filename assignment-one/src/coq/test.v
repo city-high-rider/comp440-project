@@ -466,6 +466,39 @@ Proof.
                 * assumption.
 Qed.
 
+(*i'm sure this is in a library somewhere, but I can't find it for the life of me.*)
+Lemma notImplies:
+    forall (P Q : Prop), ~(P -> Q) -> (P /\ ~Q).
+Proof.
+    intros p q nimp.
+    Search "not_imp".
+    split.
+        - apply (not_imply_elim p q). assumption.
+        - apply (not_imply_elim2 p q). assumption.
+Qed.
+
+Lemma checkEnabled:
+    forall S p, (forall t, In t allTasks -> In t (F S) \/ In t (P S))
+        -> statusAreTasks S
+        -> In p (P S)
+        -> enabled S p \/ (exists d, E d p /\ In d (P S)).
+Proof.
+    intros S p porf Hst Hinp.
+    destruct (classic (forall d, E d p -> In d (F S))) as [HallF | Hnot].
+        - left. split; assumption.
+        - apply not_all_ex_not in Hnot.
+          destruct Hnot as [d Hd].
+          apply notImplies in Hd.
+          destruct Hd as [Hedge Hnotf].
+          assert (In d allTasks) as Hdall.
+            + apply E_closed with (t := p).
+                * assumption.
+                * apply Hst. right. right. left. assumption.
+            + destruct (porf d Hdall) as [HdF | HdP].
+                * contradiction.
+                * right. exists d. split; assumption.
+Qed.
+
 Lemma findEnabled:
     forall S, wfState S -> R S = [] -> D S = [] -> ~finished S -> exists p, enabled S p.
 Proof.
@@ -485,17 +518,16 @@ Proof.
         - destruct (P S) as [| p ps] eqn:NP.
             + contradiction.
             + pose proof (mkPorf S Hcov noR noD) as porf.
-              pose proof (allPorSomeQ Task allTasks _ _ porf) as HallFSomeP.
-              destruct HallFSomeP as [HallF | HSomeP].
-                * exists p. split.
-                    -- rewrite NP. simpl. left. reflexivity.
-                    -- intros d Hd.
-                       assert (In p allTasks).
-                        ++ apply (Hst p). right. right. left.
-                           rewrite NP. simpl. left. reflexivity.
-                        ++ specialize (E_closed d p Hd H).
-                           specialize (HallF d E_closed). assumption.
-                *
+              assert (Hforall : forall x, In x (P S) -> enabled S x \/ exists d, E d x /\ In d (P S)).
+                {intros x Hx. apply checkEnabled; assumption. }
+              assert (HforallFlip : forall x, In x (P S) -> (exists d, E d x /\ In d (P S)) \/ enabled S x).
+                {intros x Hx. specialize (Hforall x Hx). destruct Hforall as [Hen | Hdep].
+                 - right. exact Hen.
+                 - left. exact Hdep.
+                }
+              destruct (allPorSomeQ Task (P S) _ _ HforallFlip) as [HallDeps | [c [HcP Hen]]].
+                * give_up.
+                * exists c. exact Hen.
 
 Theorem progress:
     forall S, wfState S -> ~finished S -> exists S', step S S'.
