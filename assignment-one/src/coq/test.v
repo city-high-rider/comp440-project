@@ -134,9 +134,10 @@ Proof.
             + f_equal. assumption.
 Qed. 
 
-
-
 Variable allTasks : list Task.
+
+Hypothesis E_closed :
+    forall d t, E d t -> In t allTasks -> In d allTasks.
 
 Definition covers (S : Scheduler) : Prop :=
     forall t, In t allTasks -> In t (F S) \/ In t (R S) \/ In t (P S) \/ In t (D S).
@@ -149,8 +150,12 @@ Definition disjoint (S : Scheduler) : Prop :=
 Definition maxOneRun (S : Scheduler) : Prop :=
     length (D S) = 0 \/ length (D S) = 1.
 
+Definition statusAreTasks (S : Scheduler) : Prop :=
+    forall t, In t (F S) \/ In t (R S) \/ In t (P S) \/ In t (D S)
+        -> In t allTasks.
+
 Definition wfState (S : Scheduler) : Prop :=
-    maxOneRun S /\ covers S /\ disjoint S.
+    maxOneRun S /\ covers S /\ disjoint S /\ statusAreTasks S.
 
 Lemma oneRunStep :
     forall S S', maxOneRun S -> step S S' -> maxOneRun S'.
@@ -361,17 +366,50 @@ Proof.
             + intros x xinpr xind. simpl in xind, xinpr.
               apply inRemove in xinpr. firstorder.
 Qed.
-              
-    
+
+Theorem statusAreTasksPreserved :
+    forall S S', statusAreTasks S -> step S S' -> statusAreTasks S'.
+Proof.
+    intros S S' Hstat Hstep.
+    destruct Hstep.
+        - intros st [Inf | [InRSmaller | [Inp | InDSingle]]].
+            + simpl in Inf. apply (Hstat st). left. assumption.
+            + simpl in InRSmaller. apply inRemove in InRSmaller.
+              destruct InRSmaller as [Istrs _].
+              apply (Hstat st). right. left. assumption.
+            + simpl in Inp. apply (Hstat st). right. right. left. assumption.
+            + cbn [D] in InDSingle. destruct InDSingle.
+                * rewrite <- H1. apply (Hstat t). right. left. assumption.
+                * contradiction.
+        - intros st [InfBigger | [InR | [Inp | InEmpty]]].
+            + simpl in InfBigger. destruct InfBigger.
+                * rewrite <- H0. apply (Hstat t). right. right. right. assumption.
+                * apply (Hstat st). left. assumption.
+            + simpl in InR. apply (Hstat st). right. left. assumption.
+            + simpl in Inp. apply (Hstat st). right. right. left. assumption.
+            + cbn [D] in InEmpty. contradiction.
+        - intros st [Inf | [InRBigger | [InPSmaller | InD]]].
+            + simpl in Inf. apply (Hstat st). left. assumption.
+            + simpl in InRBigger. destruct InRBigger.
+                * destruct H. rewrite H0 in H. apply (Hstat st).
+                  right. right. left. assumption.
+                * apply (Hstat st). right. left. assumption.
+            + simpl in InPSmaller. apply inRemove in InPSmaller.
+              destruct InPSmaller as [Hinp _].
+              apply (Hstat st). right. right. left. assumption.
+            + simpl in InD. apply (Hstat st). right. right. right. assumption.
+Qed. 
 
 Theorem wfPreserved :
     forall S S', wfState S -> step S S' -> wfState S'.
 Proof.
-    intros S S' fstWf Hstep. destruct fstWf as [fstOR [fstCvr fstDj]]. split.
+    intros S S' fstWf Hstep. destruct fstWf as [fstOR [fstCvr [fstDj fstSt]]]. split.
         - apply (oneRunStep S S' fstOR) in Hstep. assumption.
         - split.
             + apply (coverStep S S' fstCvr fstOR Hstep).
-            + apply (disjointPreserved S S' fstDj Hstep).
+            + split.
+                * apply (disjointPreserved S S' fstDj Hstep).
+                * apply (statusAreTasksPreserved S S' fstSt Hstep).
 Qed.
 
 
@@ -446,7 +484,12 @@ Proof.
             + congruence.
         - destruct (P S) as [| p ps] eqn:NP.
             + contradiction.
-            + 
+            + pose proof (mkPorf S Hcov noR noD) as porf.
+              pose proof (allPorSomeQ Task allTasks _ _ porf) as HallFSomeP.
+              destruct HallFSomeP as [HallF | HSomeP].
+                * exists p. split.
+                    -- rewrite NP. simpl. left. reflexivity.
+                    -- intros d Hd. 
 
 Theorem progress:
     forall S, wfState S -> ~finished S -> exists S', step S S'.
