@@ -190,6 +190,8 @@ The totality checker is clever enough that usually, no manual intervention by th
 
 Secondly, it is worth mentioning why the Idris proof is so terse, as it will provide a bit of context when we later discuss the languages' tooling and compare it to tactic-based theorem proving like Rocq. The compactness mainly comes from the fact that most of the "reasoning" is delegated to the type checker's constraint solving mechanisms rather than being written explicitly in the proof. Recall the written `LTE` transitivity proof from earlier: most of the steps were case analysis on constructors, refinement of type indices, and elimination of contradictory cases. All of this mechanical work is automatically handled in a process called _unification_, which solves equations between types and fills in implicit parameters. This is why we did not need to supply values such as `someNumber`, since the type checker infers them in order to make the expressions type correctly. Finally, termination is also automatically handled by a totality checker, meaning that explicit termination arguments are often unnecessary.
 
+=== Proving that something is not true
+
 It is sometimes necessary to prove that a proposition does _not_ hold. For this, there needs to be a type which represents falsehood, or a contradiction. We have already established that in order to prove a proposition holds, it is necessary to provide direct evidence. Since the false proposition should never be provable, there should be no way to construct any evidence for it at all. Thus, the type representing contradiction / falsehood is remarkably simple: it is merely a type with no constructors:
 ```idris
 data Void
