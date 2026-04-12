@@ -210,3 +210,27 @@ Not : Type -> Type
 Not prop = prop -> Void
 ```
 which matches the classical logic interpretation of negation: to prove $not P$, we assume $P$ and derive a contradiction.
+
+=== Tactic based theorem proving
+We can now see how it's possible to state and prove something constructively by directly working with evidence. We also have some idea about how the unifier can verify these proofs somewhat mechanically. However, there are reasons why working with the unifier alone may be unpleasant. Because it only verifies the correctness of fully constructed terms, writing proofs can feel like manually constructing complicated expressions while using the unification process as a guide to repeatedly tweak them until they are eventually accepted by the type checker. Such a process does not capture higher level proof structure or intent, which can make the resulting code hard to write and understand. For example, consider the following function:
+```idris
+||| a number is equal to the sum of its digits mod 3.
+total
+kCongDigits3 : (d : Decimal n) -> congMod 3 n (sumDigits d)
+kCongDigits3 (MostSig digit) = (0 ** rewrite plusZeroRightNeutral (finToNat digit) in Refl)
+kCongDigits3 (digit <: rest) = let (h ** prf) = kCongDigits3 rest in
+  rewrite prf in
+  rewrite multCommutative 10 (sumDigits rest + h*3) in
+  rewrite multDistributesOverPlusLeft (sumDigits rest) (h*3) 10 in
+  rewrite multRightSuccPlus (sumDigits rest) 9 in
+  rewrite sym (plusAssociative (sumDigits rest) ((sumDigits rest) * 9) ((h*3)*10)) in
+  rewrite plusAssociative (finToNat digit) (sumDigits rest) ((sumDigits rest)*9 + (h*3)*10) in
+  rewrite nestedMultSwap h 3 10 in
+  rewrite factor3from9 (sumDigits rest) in
+  rewrite sym (multDistributesOverPlusLeft (mult (sumDigits rest) 3) (mult h 10) 3) in
+  ((plus (mult (sumDigits rest) 3) (mult h 10)) ** Refl)
+```
+From the type signature and comment, it's possible to understand what this lemma proves. But, it may not be immediately clear to the reader that this is a proof by induction on the quantity of digits in the decimal representation of the number, or what the underlying algebraic manipulation is actually doing. Writing such a proof is equally tedious, as instead of working with traditional algebraic rules, it is instead necessary to draw the syntactical expression tree, rewrite it with another lemma, and repeat this process until the goal is reached.
+
+Therefore, tactics provide a higher level interface for constructing proofs. Instead of directly building evidence, they allow the user to work in terms of goals and subgoals. The user may write a sequence of simple commands to update these goals, which also incrementally generate the underlying term that the unification checker verifies.
+
