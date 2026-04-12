@@ -212,7 +212,9 @@ Not prop = prop -> Void
 which matches the classical logic interpretation of negation: to prove $not P$, we assume $P$ and derive a contradiction.
 
 === Tactic based theorem proving
-We can now see how it's possible to state and prove something constructively by directly working with evidence. We also have some idea about how the unifier can verify these proofs somewhat mechanically. However, there are reasons why working with the unifier alone may be unpleasant. Because it only verifies the correctness of fully constructed terms, writing proofs can feel like manually constructing complicated expressions while using the unification process as a guide to repeatedly tweak them until they are eventually accepted by the type checker. Such a process does not capture higher level proof structure or intent, which can make the resulting code hard to write and understand. For example, consider the following function:
+We can now see how it's possible to state and prove propositions constructively by directly manipulating evidence. We also have an idea about how the unifier verifies such proofs through constraint solving and definitional equality. However, working directly with explicit terms can be unpleasant in practice. Since correctness is only established for fully constructed expressions, proofs often feel like manually building and reshaping complex terms while relying on the type checker to validate each intermediate step. This process does not capture higher level proof structure or intent, which can make proofs difficult to write and understand.
+
+For example, consider the following function:
 ```idris
 ||| a number is equal to the sum of its digits mod 3.
 total
@@ -230,7 +232,7 @@ kCongDigits3 (digit <: rest) = let (h ** prf) = kCongDigits3 rest in
   rewrite sym (multDistributesOverPlusLeft (mult (sumDigits rest) 3) (mult h 10) 3) in
   ((plus (mult (sumDigits rest) 3) (mult h 10)) ** Refl)
 ```
-From the type signature and comment, it's possible to understand what this lemma proves. But, it may not be immediately clear to the reader that this is a proof by induction on the quantity of digits in the decimal representation of the number, or what the underlying algebraic manipulation is actually doing. Writing such a proof is equally tedious, as instead of working with traditional algebraic rules, it is instead necessary to draw the syntactical expression tree, rewrite it with another lemma, and repeat this process until the goal is reached.
+From the type signature and comment, it's possible to understand what this lemma proves. But, it may not be immediately clear to the reader that this is a proof by induction on the quantity of digits in the decimal representation of the number, or what the underlying algebraic manipulation is actually doing. Rather than using traditional algebraic techniques, writing this proof involved several syntactic rewrites of an expression tree until it was accepted by the type checker.
 
-Therefore, tactics provide a higher level interface for constructing proofs. Instead of directly building evidence, they allow the user to work in terms of goals and subgoals. The user may write a sequence of simple commands to update these goals, which also incrementally generate the underlying term that the unification checker verifies.
+To solve these problems, tactics provide a higher-level interface for constructing proofs. Rather than explicitly building proof terms, they allow us to work in terms of goals and subgoals. Each tactic incrementally refines the proof state while generating a term that is ultimately checked using the same unification techniques.
 
