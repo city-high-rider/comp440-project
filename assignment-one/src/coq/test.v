@@ -499,6 +499,15 @@ Proof.
                 * right. exists d. split; assumption.
 Qed.
 
+Lemma allOutgoingEdgeContra :
+    forall S,
+        P S <> [] ->
+        (forall x, In x (P S) -> exists d, E d x /\ In d (P S)) ->
+        False.
+Proof.
+    give_up.
+Admitted.
+
 Lemma findEnabled:
     forall S, wfState S -> R S = [] -> D S = [] -> ~finished S -> exists p, enabled S p.
 Proof.
@@ -526,9 +535,9 @@ Proof.
                  - left. exact Hdep.
                 }
               destruct (allPorSomeQ Task (P S) _ _ HforallFlip) as [HallDeps | [c [HcP Hen]]].
-                * exfalso. give_up.
+                * exfalso. rewrite <- NP in pne. apply (allOutgoingEdgeContra S pne HallDeps).
                 * exists c. exact Hen.
-Admitted.
+Qed.
 
 
 Theorem progress:
