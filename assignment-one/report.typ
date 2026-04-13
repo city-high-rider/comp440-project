@@ -2,6 +2,8 @@
 
 == (TODO: My ID here) - COMP440 Assignment One
 
+#outline()
+
 ---
 
 == Aims and Objectives
@@ -20,7 +22,7 @@ A _Scheduler state_ over a finite directed acyclic graph $G = (V, E)$ is compris
 A task $t$ is _enabled_ in a scheduler state over a directed acyclic graph $G = (V,E)$ if $t in P and forall d in T [d E t -> d in F]$ 
 (The task is pending and all dependencies are finished.)
 
-=== Definiton 3
+=== Definition 3
 A _step_ is a binary relation on states $S_1 = (P_1, R_1, D_1, F_1), S_2 = (P_2, R_2, D_2, F_2)$ over a directed acyclic graph $G = (V, E)$ which holds iff exactly one of the following conditions are true: 
   + $D_1 = emptyset and exists t in T [t in R_1 and t in D_2]$ (A task is moved from _ready_ to _running_)
   + $D_2 = emptyset and exists t in T [t in D_1 and t in F_2]$ (A task is moved from _running_ to _finished_)
@@ -294,5 +296,22 @@ These design differences mostly stem from the distinct philosophies of Idris and
 This difference is reflected in how proofs are expressed. In Coq, tactic-based proofs tend to mirror traditional hand-written arguments, which are typically phrased in terms of properties and relations rather than inductively constructed data. Moreover, Coq distinguishes between `Type`s and `Prop`ositions, where values in `Prop` carry no computational content and are erased during extraction. As a result, proofs in Coq are generally not meant to be executed.
 
 Taken together, these factors reduce the incentive to encode invariants directly into data structures, as was done in the Idris implementation. Instead, in Coq it is more natural to represent systems abstractly and state their properties as separate hypotheses. Meanwhile, Idris proofs must remain executable and work directly with syntactic terms, which encourages encoding invariants directly in data types.
+
+=== Proving Lemma 4 (Measure decreases across steps)
+I want to highlight this lemma in particular, because unlike all the others, this one is an arithmetic proof. It shows perhaps the strongest contrast between tactic-based and Idris style proofs. It is also a good place to demonstrate the interactive tooling of both languages. Here are both implementations for the case when we enqueue a task:
+```idris
+stepDecreasesMeasure (Enqueue (MkScheduler pending ready running finished _ _ _ _ _ _) readyThis pendingPrf _ _ _ _) =
+  rewrite sym (removeShrinkLen {xs = pending, prf = pendingPrf}) in
+  rewrite sym (plusSuccRightSucc (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0)) in
+  rewrite sym (plusSuccRightSucc (length (remove pending pendingPrf)) (S (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0)))) in
+  rewrite sym (plusSuccRightSucc (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0))) in
+  rewrite sym (plusSuccRightSucc (plus (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) (S (S ((plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0))))))) in
+  rewrite sym (plusSuccRightSucc (plus (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) (S ((plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0)))))) in
+  rewrite sym (plusSuccRightSucc (plus (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) ((plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0))))) in
+  rewrite sym (plusSuccRightSucc (length ready) (plus (length ready) 0)) in
+  rewrite sym (plusSuccRightSucc (length (maybeToList running)) (S (plus (length ready) (plus (length ready) 0)))) in
+  rewrite sym (plusSuccRightSucc (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) in
+  Refl
+```
 
 
