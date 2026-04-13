@@ -251,7 +251,7 @@ There is quite a bit of code in both proofs, however much of this is taken up by
   [`idris/Unique.idr`], [Definition of a list with no duplicate elements.],
   [`idris/Remove.idr`], [Definition of removing an item from a list, lemmas about how it interacts with other definitions.],
   [`idris/Trace.idr`], [Definition of scheduler state, step, trace, measure function. Proof of progress and termination theorems.],
-  [`coq/terminationProof.v`], [Definition of scheduler state, step, trace, measure. Proof of progress and termination. This is the only Coq file, because unlike Idris, I did not have to define helper types and lemmas.]
+  [`coq/terminationProof.v`], [Definition of scheduler state, step, trace, measure. Proof of progress and termination. This is the only Coq file, because unlike Idris, many things were assumed or already defined in the standard library.]
 )
 
 There are, however, a few specific parts definitely worth discussing, which I will focus on.
@@ -272,3 +272,23 @@ data DAG : List Task -> Type where
     DAG (t :: tasks)
 ```
 In order to enforce that every node is a source, the DAG is indexed over a list of tasks which represents all of the present nodes. The list of nodes which a new source points to (`deps`) is required to be a subset of the task list. The task list also allows us to enforce uniqueness of nodes by requiring that a newly added source is not already there. This representation dramatically simplifies the proof of Lemma 2 (finding an enabled task) as it allows us to reason about the graph inductively by passing a subgraph into a recursive call. Since the subgraph is a syntactic subterm of the original graph, this eliminates the need for complicated measures or termination proofs when working with it, as recursive calls on subterms of an argument is the precise condition the totality checker examines. There is also no need to carry proofs of acyclicity or uniqueness, as they are baked directly into the construction of the graph.
+
+The Coq implementation follows the pen and paper proof more closely. Instead of modelling a graph at all, we assume there is some finite set of tasks and a dependency relation over tasks such that is it acyclic and the set of all tasks is closed under this relation:
+```coq
+Variable allTasks : list Task.
+
+Variable E : Task -> Task -> Prop.
+
+Definition acyclic :=
+    forall t, ~ clos_trans Task E t t.
+
+Hypothesis E_acyclic : acyclic.
+
+Hypothesis E_closed :
+    forall d t, E d t -> In t allTasks -> In d allTasks.
+```
+In contrast to the Idris approach, this representation does not attempt to encode structural invariants such as acyclicity or closure directly into a data type. Instead, these properties are stated separately as logical hypotheses.
+
+These design differences mostly stem from the distinct philosophies of Idris and Coq. Both are capable of theorem proving and regular programming, however Idris is more focused on computation, while Coq is more focused on theorem proving. That is, Idris can be thought of as a functional programming language which has a strong enough type system to prove things, while Coq is primarily designed as a proof assistant, but can be used to implement some functions. As such, Coq's tactics often mirror arguments that are phrased in terms of relations and properties rather than inductively constructed objects, similarly to most hand-written proofs. Furthermore, Coq distinguishes between `Type`s and `Prop`ositions. The latter carry no computational content and are erased. In other words, tactic based proofs are often not "executed" like Idris functions are. With these combined factors, there is less incentive to encode invariants into data types for execution purposes.
+
+
