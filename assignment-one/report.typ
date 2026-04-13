@@ -236,3 +236,39 @@ From the type signature and comment, it's possible to understand what this lemma
 
 To solve these problems, tactics provide a higher-level interface for constructing proofs. Rather than explicitly building proof terms, they allow us to work in terms of goals and subgoals. Each tactic incrementally refines the proof state while generating a term that is ultimately checked using the same unification techniques.
 
+=== Classical axioms
+TODO: write me!
+
+== Comparing the Idris and Coq proofs
+There is quite a bit of code in both proofs, however much of this is taken up by rather mechanical lemmas which are not very interesting to discuss. Here is a map of the source code:
+#table(
+  columns: 2,
+  table.header[*File*][*Notable Contents*],
+  [`idris/Elem.idr`], [List membership definition and lemmas.],
+  [`idris/All.idr`], [Proof that a proposition holds for all elements in a list.],
+  [`idris/Subset.idr`], [Definition of a list being a subset of another list, proof that a proposition holds for an element in a list, some lemmas.],
+  [`idris/Task.idr`], [Definition of a task, a DAG, and dependencies of a task.],
+  [`idris/Unique.idr`], [Definition of a list with no duplicate elements.],
+  [`idris/Remove.idr`], [Definition of removing an item from a list, lemmas about how it interacts with other definitions.],
+  [`idris/Trace.idr`], [Definition of scheduler state, step, trace, measure function. Proof of progress and termination theorems.],
+  [`coq/terminationProof.v`], [Definition of scheduler state, step, trace, measure. Proof of progress and termination. This is the only Coq file, because unlike Idris, I did not have to define helper types and lemmas.]
+)
+
+There are, however, a few specific parts definitely worth discussing, which I will focus on.
+
+=== Modelling the DAG.
+First, a brief note on tasks: they are treated as an opaque type and hold no internal state. It may be helpful to think of them as _task IDs_ instead. The only constraint is that equality of tasks should be decidable. In both implementations, tasks are a type alias for natural numbers.
+
+The approach to modelling the dependency graph in Idris and Coq was very different. In Idris, we tend to prefer simple, recursively defined data types, as they reduce code complexity, particularly when proofs by induction are involved. Moreover, it is desirable to make the graph acyclic by construction rather than model a generic graph and carry an acyclicity proof separately. Therefore, traditional representations of graphs such as adjacency lists and matrices are not ideal. Instead, the DAG is built up by starting with an empty graph and repeatedly adding unique source nodes:
+```idris
+data DAG : List Task -> Type where
+  Empty : DAG []
+  AddTask :
+    (t : Task) ->
+    (deps : List Task) ->
+    Not (t `Elem` tasks) ->
+    deps `Subset` tasks ->
+    DAG tasks ->
+    DAG (t :: tasks)
+```
+In order to enforce that every node is a source, the DAG is indexed over a list of tasks which represents all of the present nodes. The list of nodes which a new source points to (`deps`) is required to be a subset of the task list. The task list also allows us to enforce uniqueness of nodes by requiring that a newly added source is not already there. This representation dramatically simplifies the proof of Lemma 2 (finding an enabled task) as it allows us to reason about the graph inductively by passing a subgraph into a recursive call. Since the subgraph is a syntactic subterm of the original graph, this eliminates the need for complicated measures or termination proofs when working with it, as recursive calls on subterms of an argument is the precise condition the totality checker examines. There is also no need to carry proofs of acyclicity or uniqueness, as they are baked directly into the construction of the graph.
