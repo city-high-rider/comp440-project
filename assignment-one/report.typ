@@ -299,6 +299,8 @@ Taken together, these factors reduce the incentive to encode invariants directly
 
 === Proving Lemma 4 (Measure decreases across steps)
 I want to highlight this lemma in particular, because unlike all the others, this one is an arithmetic proof. It shows perhaps the strongest contrast between tactic-based and Idris style proofs. It is also a good place to demonstrate the interactive tooling of both languages. Here are both implementations for the case when we enqueue a task:
+
+Idris:
 ```idris
 stepDecreasesMeasure (Enqueue (MkScheduler pending ready running finished _ _ _ _ _ _) readyThis pendingPrf _ _ _ _) =
   rewrite sym (removeShrinkLen {xs = pending, prf = pendingPrf}) in
@@ -314,4 +316,72 @@ stepDecreasesMeasure (Enqueue (MkScheduler pending ready running finished _ _ _ 
   Refl
 ```
 
+Coq:
+```coq
+- unfold mu. cbn [F R P D].
+  pose proof (Nat.add_lt_mono_l) as Hsub.
+  repeat rewrite <- Nat.add_assoc.
+  symmetry in Hsub.
+  apply Hsub with (p := length (D S)).
+  simpl (length (t :: R S)).
+  rewrite (Nat.mul_succ_r 2 (length (R S))).
+  repeat rewrite <- Nat.add_assoc.
+  apply Hsub with (p := 2*length(R S)).
+  destruct H as [H _].
+  pose proof (remove_length_lt Nat.eq_dec (P S) t H) as Hlen.
+  apply ltSum in Hlen. destruct Hlen.
+  replace (3 * length (P S)) with (3 * (Datatypes.S x + length (remove Nat.eq_dec t (P S)))).
+    + rewrite (Nat.mul_add_distr_l 3 (Datatypes.S x) (length (remove Nat.eq_dec t (P S)))).
+      pose proof (Nat.add_lt_mono_r) as HsubR.
+      symmetry in HsubR.
+      apply HsubR with (p := 3 * length (remove Nat.eq_dec t (P S))).
+      lia.
+    + f_equal. assumption.
+```
+
+Neither of these are particularly easy to read without tools. However, observe the difference in structure: the Idris proof is just a sequence of rewrites, explicitly specifying which rule should be applied to which sub-expressions. In contrast, the coq proof uses several different tactics: we tell it to replace certain function calls with their definitions, introduce new proofs in the context, and in cases where the goal has been simplified enough, we can even invoke fully automatic tools like `lia` to complete the rest of the proof. In some places, specific sub-expressions are mentioned just like in the Idris proof, however they are much simpler.
+
+Unlike Idris however, Coq allows the reader to walk through the proof step-by-step, incrementally applying the tactics and observing how the hypotheses and goal change. For example, the goal is initially
+```coq
+mu
+  {|
+    F := F S;
+    R := t :: R S;
+    P := remove Nat.eq_dec t (P S);
+    D := D S
+  |} < mu S
+```
+Then, after expanding the definition of `mu` and record field projections with `unfold mu. cbn [F R P D].`, the goal changes:
+```coq
+length (D S) + 2 * length (t :: R S) + 3 * length (remove Nat.eq_dec t (P S))
+<
+length (D S) + 2 * length (R S) + 3 * length (P S)
+```
+This gives the reader a very solid idea of what is happening, and what the next steps might be. In this case, it's immediately clear that `length (D S)` is present on both sides of the inequality, so a next step could be to cancel them out. Indeed, this is precisely what the next four tactics do:
+ - Introduce a proof that `p + a < p + b -> a < b` into the list of hypotheses as `Hsub`.
+ - use associativity of addition to get the LHS into the correct form, because addition is left-associative by default.
+ - Apply `Hsub` with `p := length (D S)`.
+Having applied these tactics, the goal is now:
+```coq
+2 * length (t :: R S) + 3 * length (remove Nat.eq_dec t (P S))
+<
+2 * length (R S) + 3 * length (P S)
+```
+Again, the next step is clear. We know by the definition of `length` that `length (t :: R S)` should be equal to `1 + length (R S)`. We can use tactics to conclude this by simplifying `length (t :: R S)`, then distribute the multiplication of 2 over both terms. Afterwards, both sides of the inquality will once again contain identical terms, namely `2 * length (R S)` that we can cancel out. Once again, this is done by the next four tactics. The rest of the proof proceeds in a similar manner, until the goal is simplified to a proof that `2 < 3 * (1 + x)`. At this point, the goal is sufficiently simple that `lia` is able to automatically complete the remainder of the proof.
+
+Now, let's compare this to the Idris proof. Although there is no interactive tooling to step through each rewrite, we may manually remove all the rewrites, replace the function body with a hole, and inspect the type of the hole to see what the initial goal of the proof is:
+```
+stepDecreasesMeasure (Enqueue (MkScheduler pending ready running finished _ _ _ _ _ _) readyThis pendingPrf _ _ _ _) =
+  ?hole
+```
+This yields the following (note that here `S` is the successor function, not a scheduler state):
+```
+hole :
+plus (plus (length (maybeToList running)) (plus (length ready) (plus (length ready) 0))) (plus (length pending) (plus (length pending) (plus (length pending) 0)))
+=
+S (plus (plus (length (maybeToList running)) (S (plus (length ready) (S (plus (length ready) 0))))) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) (plus (length (remove pending pendingPrf)) 0))))
+```
+Here we can see that the unification process automatically expanded all the functions it could: the measure, the field projections, multiplication, and addition where possible. The expressions are also written in prefix form rather than infix form with explicit brackets. The remaining proof involves applying an equality `length pending = S (length (remove pending pendingPrf))` and bubbling the `S` functions out of the `plus` expressions with `plusSuccRightSucc : (left : Nat) -> (right : Nat) -> S (left + right) = left + S right` before concluding the proof with reflexivity. Most of the volume in the proof is from having to specify what `left` and `right` are at every `plussSuccRightSucc` call, which involves repeating a lot of large expressions.
+
+This is an example of how tactic based proofs can be much easier to read and write. If a reader wants to understand the Coq proof, they may simply walk through it step by step. On the other hand, examining an intermediate step of the Idris proof requires commenting out code, inserting a hole, and inspecting its type. When writing this proof in Coq, it was also much easier to read the goal and judge what the next step should be. We were able to precisely control what got expanded and where, and writing out complicated sub-expressions was usually not necessary to apply tactics.
 
