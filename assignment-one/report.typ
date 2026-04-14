@@ -6,7 +6,7 @@
 #heading(outlined: false, depth: 2)[(TODO: My ID here) - COMP440 Assignment One]
 #outline()
 
----
+#pagebreak()
 
 = Aims and Objectives
 The objective of this report is to model and prove the termination of a directed acyclic graph (DAG) scheduler in Idris2 and Coq (the precise theorem will be stated at the end of the next section). The proof will then be used as a vehicle to compare both languages by considering their available tooling (specifically interactive editing features, content of the standard library, and package managers), approaches to encoding propositions and proofs, as well as their methods for judging these propositions. Finally, a subjective account of both languages' developer experience will be given.
@@ -388,4 +388,30 @@ Here we can see that the unification process automatically expanded all the func
 This is a good example that shows how tactic based proofs can provide a more structured workflow, allowing us to focus on high level transformations rather than manually constructing large expressions. A tactic based proof can be explored by stepping through each tactic one at a time and observing how the goal changes. This makes it much easier to understand the current state of the proof and the affect of each step. On the other hand, Idris does not provide a comparable interface. Inspecting the intermediate proof states usually requires manually inserting holes and querying their types. This difference also affects the process of writing proofs. Tactics make it easier to work with low-level details such as rewriting sub expressions or selectively expanding terms. Arguments can often be inferred instead of explicitly stated, and in some cases entire sections of the proofs can be automated with tools like `lia`. In Idris, however, many details must be expressed explicitly, increasing the density of the code.
 
 == Proof of lemmas 1 and 2
+
+These two proofs are very interesting to compare with the proof of lemma four. In a sense, they are on opposite ends of a spectrum: the arguments used to prove the fourth lemma were mostly properties of relations and symbolic manipulation. On the other hand, the proof of lemma 1 is much more computational; it involves traversing a graph and keeping track of the visited nodes. The Idris argument matches this reasoning very closely. Here is the skeleton of the proof:
+```idris
+findEnabled [] Empty _ (_ ** (_, hasPendingInDag)) _ = absurd -- contradiction
+findEnabled (t :: restTasks) (AddTask t tDeps tNotInRest depsSSRest restDag) s (somePending ** (itsPending, itsInTheDag)) (porfT :: porfRest) =
+  case porfT of
+       (Left itsFinished) =>
+          -- ... current task is finished, keep looking
+          findEnabled restTasks restDag s (somePending ** (itsPending, somethingPendingInRestTasks)) porfRest
+          -- ...
+       (Right itsPending) =>
+        case allAOrBMeansAllAOrOneB porfDeps of
+             (Left allDepsFinished) =>
+                -- ... found an enabled task, stop here
+             (Right (pendingDep ** (inRest, inTdeps))) =>
+                -- ... found another pending dependency, recurse
+                findEnabled restTasks restDag s (pendingDep ** (inRest, extractPrf inTdeps depsSSRest)) porfRest
+                -- ...
+```
+The implementation carries lots of proof information (membership proofs, dependency correctness, etc.) However, stripping all of that out, you can see that the core structure is actually a simple recursive search over the DAG. The broad strokes of the proof are as follows:
+The dependency graph is either empty or a source appended to a smaller dependency graph. If it is empty, we have a contradiction, because one of the hypotheses is that there is one pending task in the DAG. If it is not empty, we examine the task we broke off.
+If the task is finished, we recursively continue exploring the rest of the graph. We know there ought to be a pending task in the rest of the graph, because the task we took off was finished, not pending.
+If the task is pending, we consider its dependency list. We know that each task in the DAG must either be finished or pending, so there are two possible outcomes. In the first, all of the dependencies are finished, in which case we have found the enabled task. In the second, there is one dependency further in the graph which is pending. Thus, we can make another recursive call and continue the search.
+
+Notice that the proof itself is just a program that uses pattern matching and recursion. It is an actual, exectuable search procedure that keeps track of a witness and refines it step by step. This is also where we can see the inductive DAG model pulling its weight: much like working with lists, this lets us break the graph into one node and the remaninng subgraph, inspect the node, and then pass the subgraph to a recursive call. Since the subgraph is just a syntactic subterm, there is also no need for an explicit termination argument here as we know the DAG argument shrinks with each call.
+
 
