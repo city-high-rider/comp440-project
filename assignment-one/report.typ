@@ -1,67 +1,69 @@
-= Verifying a Simple DAG Scheduler
+#set document(
+  title: [Verifying a Simple DAG Scheduler in Coq and Idris2],
+)
 
-== (TODO: My ID here) - COMP440 Assignment One
-
+#title()
+#heading(outlined: false, depth: 2)[(TODO: My ID here) - COMP440 Assignment One]
 #outline()
 
 ---
 
-== Aims and Objectives
+= Aims and Objectives
 The objective of this report is to model and prove the termination of a directed acyclic graph (DAG) scheduler in Idris2 and Coq (the precise theorem will be stated at the end of the next section). The proof will then be used as a vehicle to compare both languages by considering their available tooling (specifically interactive editing features, content of the standard library, and package managers), approaches to encoding propositions and proofs, as well as their methods for judging these propositions. Finally, a subjective account of both languages' developer experience will be given.
 
-== Preliminary Models, Definitions, and Proofs
+= Preliminary Models, Definitions, and Proofs
 
-=== Definition 1
+== Definition 1 (Scheduler state)
 A _Scheduler state_ over a finite directed acyclic graph $G = (V, E)$ is comprised of four sets of tasks that are pairwise disjoint and together cover $V$:
   1. The set of finished tasks, $F$
   2. The set of ready tasks, $R$
   3. The set of pending tasks, $P$
   4. The set of running tasks, $D$, which may contain at most one element.
 
-=== Definition 2
+== Definition 2 (Enabled task)
 A task $t$ is _enabled_ in a scheduler state over a directed acyclic graph $G = (V,E)$ if $t in P and forall d in T [d E t -> d in F]$ 
 (The task is pending and all dependencies are finished.)
 
-=== Definition 3
+== Definition 3 (Step)
 A _step_ is a binary relation on states $S_1 = (P_1, R_1, D_1, F_1), S_2 = (P_2, R_2, D_2, F_2)$ over a directed acyclic graph $G = (V, E)$ which holds iff exactly one of the following conditions are true: 
   + $D_1 = emptyset and exists t in T [t in R_1 and t in D_2]$ (A task is moved from _ready_ to _running_)
   + $D_2 = emptyset and exists t in T [t in D_1 and t in F_2]$ (A task is moved from _running_ to _finished_)
   + $exists t in T [t "is enabled in" S_1 and t in R_2]$ (An enabled task is moved to _ready_)
 
-=== Definition 4
+== Definition 4 (Trace)
 A "trace" between two scheduler states $S_1$ and $S_2$ is a witness of $S_1 "Step"^* S_2$, where $"Step"^*$ is the transitive-reflexive closure of the step relation.
 
-=== Definition 5
+== Definition 5 (Terminal scheduler state)
 A scheduler state $S$ is "terminal" if there does not exist an $S'$ such that $S "Step" S'$ holds.
 
-=== Definition 6
+== Definition 6 (Measure of a scheduler state)
 The measure $mu$ of a state $S$ is a function $mu : SS -> NN$ where $mu(S) = |D| + 2|R| +3|P|$
 
-=== Definition 7
+== Definition 7 (Finished scheduler state)
 A scheduler state over a directed acyclic graph $G = (V, E)$ is _finished_ if $forall t in V [t in F]$
 
-=== Lemma 1
+== Lemma 1 (Outgoing edges and cycles)
 If every node in a directed graph $G = (V,E)$ has an outgoing edge, the graph is cyclic.
 
-==== Proof of lemma 1
+=== Proof of lemma 1
 Pick any $v in V$. Because each node has an outgoing edge, it is possible to cross $|V|$ edges starting from $v$. Every time you cross an edge to an adjacent node, one of the following is true:
   + You have visited the adjacent node before
   + You have not visited the adjacent node before.
   In the first case, this means there is a cycle. If, after $|V|$ steps, you have not found a cycle, this means you have visited $|V| + 1$ unique nodes, which is not possible. Therefore, the graph is cyclic. $qed$
 
-=== Lemma 2
+== Lemma 2 (Finding an enabled task)
 For a scheduler state $S = (F, P, R, D)$ over a directed acyclic dependency graph $G = (V, E)$, if $P != emptyset and R = emptyset and D = emptyset$ then there is an enabled task in $P$.
 
-==== Proof of lemma 2
+=== Proof of lemma 2
 The proof is by contradiction. Suppose that we cannot find an enabled task in $P$. This means that each pending task depends on an unfinished task. Since $P, R, D, F$ are pairwise disjoint and cover $V$, and $R$ and $D$ are empty, this means that these unfinished tasks must be in the pending set also. Therefore, each node in the subgraph $G_s = (P, {u->v in E | u in P and v in P})$ must have at least one outgoing edge. By lemma 1, this implies $G_s$ is cyclic. Since $G_s$ is cyclic, $G$ is cyclic. $arrow.r.double arrow.l.double$
 
-=== Theorem 1 (Terminal and finished states)
+=== Theorem 1 (Terminal $<=>$ finished)
 A state is finished iff it is terminal.
 
-==== Proof of theorem 1
-===== $->$ direction (if a state is finished, then it is terminal.)
+=== Proof of theorem 1
+==== $->$ direction (if a state is finished, then it is terminal.)
 In a finished state $S$ over $G = (V, E)$, every $t$ in $V$ is in $F$. Since $P, R, D, F$ are pairwise disjoint and cover $V$, this means that the sets $P, R, G$ are all empty. Therefore, no steps are possible, and thus the finished state is terminal.
-===== $<-$ direction (if a state is terminal, then it is finished.)
+==== $<-$ direction (if a state is terminal, then it is finished.)
 We will do the contrapositive proof: if a state is not finished, then it is not terminal. Consider a non-finished state $S$. Then, one of the following must hold:
   + $D != emptyset$
   + $R != emptyset$
@@ -70,19 +72,19 @@ If $D != emptyset$, then there is some $e in D$. Therefore, a step to $S' = (F u
 If $R != emptyset and D = emptyset$, then there is some $r in R$. Therefore, a step to $S' = (F, R - {r}, P, {r})$ is possible, thus $S$ is non-terminal.
 If $P != emptyset and R = emptyset and D = emptyset$, there is some enabled $p in P$ by lemma 2. Therefore, a step to $S' = (F, {p}, P - {p}, emptyset)$ is possible, thus $S$ is non-terminal. $qed$
 
-=== Lemma 3
+== Lemma 3 (Measure of a finished state)
 $mu(S) = 0$ iff $S$ is finished. 
 
-==== Proof of lemma 3
-===== $<-$ direction (if a state is finished, then the measure is zero)
+=== Proof of lemma 3
+==== $<-$ direction (if a state is finished, then the measure is zero)
 By definition, if $S = (F, P, R, D)$ over $G = (V, E)$ is finished, every task is finished. Because $F, P, R, D$ are pairwise disjoint and cover $V$, $P, R, D$ must all be empty. Therefore, $mu(S) = |D| + 2|R| +3|P| = 0$.
-===== $->$ direction (if the measure is zero, then the state is finished)
+==== $->$ direction (if the measure is zero, then the state is finished)
 if $mu(S) = |D| + 2|R| +3|P| = 0$, this means all the cardinalities must be zero, as cardinalities are non-negative. Since $|D| = 0, |R| = 0, |P| = 0$, this means $D = R = P = emptyset$. Because $F, P, R, D$ are pairwise disjoint and cover $V$, this means $forall t in V [t in F]$. Therefore, $S$ is finished. $qed$
 
-=== Lemma 4
+== Lemma 4 (Measure decreases across steps)
 If $S_0 "step" S_1$ holds, $mu(S_0) = mu(S_1) + 1$
 
-==== Proof of lemma 4
+=== Proof of lemma 4
 Since $S_0 "step" S_1$ holds, one of the following must be true:
   + $D_1 = emptyset and exists t in V [t in R_1 and t in D_2]$
   + $D_2 = emptyset and exists t in V [t in D_1 and t in F_2] $
@@ -92,19 +94,19 @@ Since $S_0 "step" S_1$ holds, one of the following must be true:
 - In case 3, $mu(S_1) - mu(S_0) = |D| + 2*(|R| + 1) + 3*(|P| - 1) - [|D| + 2|R| + 3|P|] = -1$
 In each case, $mu(S_1) - mu(S_0) = -1$. Therefore, in each case, $mu(S_0) = mu(S_1) + 1 qed$
 
-=== Theorem 2 (Termination)
+== Theorem 2 (Termination)
 For every scheduler state $S_0$ there exists a finite trace to a finished state $S$.
 
-==== Proof of theorem 2
+=== Proof of theorem 2
 The proof is by induction on $mu(S_0)$.
-===== Base case
+==== Base case
 Suppose $mu(S_0) = 1$. By lemma 3, $S_0$ is not finished, and by theorem 1 it is therefore non-terminal. Thus, there exists some $S_1$ such that $S_0 "step" S_1$ holds. By lemma 4, $mu(S_1) = 0$. By lemma 3, $S_1$ must be finished. Therefore, the trace is the step from $S_0$ to $S_1$.
-===== Inductive step
+==== Inductive step
 Suppose that for every scheduler state whose measure is equal to $n$ there exists a finite trace to a finished state. Suppose that $mu(S_0) = n + 1$. By lemma 3, $S_0$ is not finished, thus by theorem 1, $S_0$ is non-terminal. So, there exists some $S_1$ such that $S_0 "step" S_1$ holds. By lemma 4, $mu(S_1) = n$. By the inductive hypothesis, there is a finite trace $t$ from $S_1$ to a finished state $S$. Therefore, a finite trace from $S_0$ to $S$ is obtained by combining the step from $S_0$ to $S_1$ with $t$. 
 
 We have shown that for every non-terminal scheduler state with an arbitrarily large measure, there is a finite trace to a finished state. Now consider a starting state. It is either terminal, or non-terminal. If it is terminal, then we have a trivial trace to a finished state, that is, itself. If it is non-terminal, then by the induction proof above, we can find a finite trace to a finished state. $qed$ 
 
-== What does it mean for a program to "prove" something?
+= What does it mean for a program to "prove" something?
 A particular school of logic called constructivism asserts that to show a proposition is true, you must be able to find evidence to support it; it is not sufficient to assume the proposition does not hold and derive a contradiction.
 
 Thus, under constructivist logic, a proposition holding means that there exists _explicit evidence_ for it, rather than merely the absence of contradiction. Morevoer, the evidence is an object with structure that can be examined and manipulated. Proofs can then be seen as functions which constructively transform valid evidence for one fact into valid evidence for another fact while preserving truth.
@@ -192,7 +194,7 @@ The totality checker is clever enough that usually, no manual intervention by th
 
 Secondly, it is worth mentioning why the Idris proof is so terse, as it will provide a bit of context when we later discuss the languages' tooling and compare it to tactic-based theorem proving like Rocq. The compactness mainly comes from the fact that most of the "reasoning" is delegated to the type checker's constraint solving mechanisms rather than being written explicitly in the proof. Recall the written `LTE` transitivity proof from earlier: most of the steps were case analysis on constructors, refinement of type indices, and elimination of contradictory cases. All of this mechanical work is automatically handled in a process called _unification_, which solves equations between types and fills in implicit parameters. This is why we did not need to supply values such as `someNumber`, since the type checker infers them in order to make the expressions type correctly. Finally, termination is also automatically handled by a totality checker, meaning that explicit termination arguments are often unnecessary.
 
-=== Proving that something is not true
+== Proving that something is not true
 
 It is sometimes necessary to prove that a proposition does _not_ hold. For this, there needs to be a type which represents falsehood, or a contradiction. We have already established that in order to prove a proposition holds, it is necessary to provide direct evidence. Since the false proposition should never be provable, there should be no way to construct any evidence for it at all. Thus, the type representing contradiction / falsehood is remarkably simple: it is merely a type with no constructors:
 ```idris
@@ -213,7 +215,7 @@ Not prop = prop -> Void
 ```
 which matches the classical logic interpretation of negation: to prove $not P$, we assume $P$ and derive a contradiction.
 
-=== Tactic based theorem proving
+== Tactic based theorem proving
 We can now see how it's possible to state and prove propositions constructively by directly manipulating evidence. We also have an idea about how the unifier verifies such proofs through constraint solving and definitional equality. However, working directly with explicit terms can be unpleasant in practice. Since correctness is only established for fully constructed expressions, proofs often feel like manually building and reshaping complex terms while relying on the type checker to validate each intermediate step. This process does not capture higher level proof structure or intent, which can make proofs difficult to write and understand.
 
 For example, consider the following function:
@@ -238,10 +240,10 @@ From the type signature and comment, it's possible to understand what this lemma
 
 To solve these problems, tactics provide a higher-level interface for constructing proofs. Rather than explicitly building proof terms, they allow us to work in terms of goals and subgoals. Each tactic incrementally refines the proof state while generating a term that is ultimately checked using the same unification techniques.
 
-=== Classical axioms
+== Classical axioms
 TODO: write me!
 
-== Comparing the Idris and Coq proofs
+= Comparing the Idris and Coq proofs
 There is quite a bit of code in both proofs, however much of this is taken up by rather mechanical lemmas which are not very interesting to discuss. Here is a map of the source code:
 #table(
   columns: 2,
@@ -258,7 +260,7 @@ There is quite a bit of code in both proofs, however much of this is taken up by
 
 There are, however, a few specific parts definitely worth discussing, which I will focus on.
 
-=== Modelling the DAG.
+== Modelling the DAG.
 First, a brief note on tasks: they are treated as an opaque type and hold no internal state. It may be helpful to think of them as _task IDs_ instead. The only constraint is that equality of tasks should be decidable. In both implementations, tasks are a type alias for natural numbers.
 
 The approach to modelling the dependency graph in Idris and Coq was very different. In Idris, we tend to prefer simple, recursively defined data types, as they reduce code complexity, particularly when proofs by induction are involved. Moreover, it is desirable to make the graph acyclic by construction rather than model a generic graph and carry an acyclicity proof separately. Therefore, traditional representations of graphs such as adjacency lists and matrices are not ideal. Instead, the DAG is built up by starting with an empty graph and repeatedly adding unique source nodes:
@@ -297,7 +299,7 @@ This difference is reflected in how proofs are expressed. In Coq, tactic-based p
 
 Taken together, these factors reduce the incentive to encode invariants directly into data structures, as was done in the Idris implementation. Instead, in Coq it is more natural to represent systems abstractly and state their properties as separate hypotheses. Meanwhile, Idris proofs must remain executable and work directly with syntactic terms, which encourages encoding invariants directly in data types.
 
-=== Proving Lemma 4 (Measure decreases across steps)
+== Proving Lemma 4 (Measure decreases across steps)
 I want to highlight this lemma in particular, because unlike all the others, this one is an arithmetic proof. It shows perhaps the strongest contrast between tactic-based and Idris style proofs. It is also a good place to demonstrate the interactive tooling of both languages. Here are both implementations for the case when we enqueue a task:
 
 Idris:
@@ -384,4 +386,6 @@ S (plus (plus (length (maybeToList running)) (S (plus (length ready) (S (plus (l
 Here we can see that the unification process automatically expanded all the functions it could: the measure, the field projections, multiplication, and addition where possible. The expressions are also written in prefix form rather than infix form with explicit brackets. The remaining proof involves applying the lemma `length pending = S (length (remove pending pendingPrf))` followed by repeatedly using `plusSuccRightSucc` to move successor constructors outwards until both sides of the equation match. The proof is then concluded by reflexivity. Most of the verbosity arises from having to explicitly pass the left and right hand side arguments to each rewrite, resulting in lots of repeating large sub-expressions.
 
 This is a good example that shows how tactic based proofs can provide a more structured workflow, allowing us to focus on high level transformations rather than manually constructing large expressions. A tactic based proof can be explored by stepping through each tactic one at a time and observing how the goal changes. This makes it much easier to understand the current state of the proof and the affect of each step. On the other hand, Idris does not provide a comparable interface. Inspecting the intermediate proof states usually requires manually inserting holes and querying their types. This difference also affects the process of writing proofs. Tactics make it easier to work with low-level details such as rewriting sub expressions or selectively expanding terms. Arguments can often be inferred instead of explicitly stated, and in some cases entire sections of the proofs can be automated with tools like `lia`. In Idris, however, many details must be expressed explicitly, increasing the density of the code.
+
+== Proof of lemmas 1 and 2
 
