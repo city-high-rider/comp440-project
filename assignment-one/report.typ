@@ -9,7 +9,7 @@
 #pagebreak()
 
 = Aims and Objectives
-The objective of this report is to model and prove the termination of a directed acyclic graph (DAG) scheduler in Idris2 and Coq (the precise theorem will be stated at the end of the next section). The proof will then be used as a vehicle to compare both languages by considering their available tooling (specifically interactive editing features, content of the standard library, and package managers), approaches to encoding propositions and proofs, as well as their methods for judging these propositions. Finally, a subjective account of both languages' developer experience will be given.
+The objective of this report is to formalise and prove the termination of a scheduler over a directed acyclic dependency graph (DAG) in both Idris2 and Coq, and to use this development for comparing how both systems support reasoning about the same problem. Specifically, we will look at how proofs and propositions are encoded, their construction either as executable programs or via tactic-based reasoning, and how the underlying logic is checked. We also investigate the practical experience of using both systems, including interactive tooling as well as how proofs can be read and written. This is supplemented by a brief subjective reflection on their overall usability of these tools.
 
 = Preliminary Models, Definitions, and Proofs
 
