@@ -249,10 +249,10 @@ findStep s@(MkScheduler pending ready (Just x) finished cover pendingAreDeps pdj
   Right ((MkScheduler pending ready Nothing (x :: finished) (coverMaintainOnComplete s Refl) pendingAreDeps pdjr (forAllForSome (\_, inEmpty => elemInEmptyImpossible inEmpty Refl)) (pdjfOnComplete s Refl) pUnique) ** Complete s x Refl)
 findStep s@(MkScheduler pending (x :: xs) Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) =
   Right ((MkScheduler pending xs (Just x) finished (coverMaintainOnStart s Refl Refl) pendingAreDeps (pdjrOnStart {something = x} s Refl) (pdjeOnStart {startThis = x} s Refl) pdjf pUnique) ** Start s Refl Refl)
-findStep (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) =
+findStep s@(MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) =
   let
-    porf = pendingOrFinished {dg = dg} (MkScheduler (x::xs) [] Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) Refl Refl
-    (en ** enDeps ** enIsPending ** enInDag ** (enDepsFinished, enDepsAreDeps)) = findEnabled {initialDag = dg} ts dg (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) (x ** (Here, extractPrf Here pendingAreDeps)) porf
+    porf = pendingOrFinished {dg = dg} s Refl Refl
+    (en ** enDeps ** enIsPending ** enInDag ** (enDepsFinished, enDepsAreDeps)) = findEnabled {initialDag = dg} ts dg s (x ** (Here, extractPrf Here pendingAreDeps)) porf
   in
   Right ((MkScheduler (remove (x::xs) enIsPending) (en :: []) Nothing finished (coverMaintainOnEnqueue (MkScheduler (x::xs) [] Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) enIsPending) (removeFromSubsetStillSubset {prf = enIsPending} pendingAreDeps) (pdjrOnEnqueue {dg=dg} (MkScheduler (x :: xs) [] Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) enIsPending pUnique) (shrinkDjArb pdje) (shrinkDjArb pdjf) (removeUniqueStillUnique pUnique)) ** Enqueue (MkScheduler (x::xs) [] Nothing finished cover pendingAreDeps pdjr pdje pdjf pUnique) en enIsPending enInDag enDeps enDepsAreDeps enDepsFinished)
 findStep (MkScheduler [] [] Nothing finished cover pendingAreDeps _ _ _ _) =
