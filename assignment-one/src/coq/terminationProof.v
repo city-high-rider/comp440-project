@@ -3,6 +3,7 @@ Require Import Arith.
 Require Import Relations.
 Require Import Coq.Logic.Classical.
 Require Import Psatz.
+Require Import Coq.Arith.Wf_nat.
 
 Import ListNotations.
 
@@ -26,7 +27,7 @@ Compute mu {| F := []; R := [1]; P := [2;3]; D := [] |}.
 Variable E : Task -> Task -> Prop.
 
 Definition acyclic :=
-    forall t, ~ clos_trans Task E t t.
+    forall t, ~ clos_refl_trans Task E t t.
 
 Hypothesis E_acyclic : acyclic.
 
@@ -498,6 +499,141 @@ Proof.
                 * contradiction.
                 * right. exists d. split; assumption.
 Qed.
+(*
+
+Inductive UniqueChain : nat -> list Task -> Task -> Task -> list Task -> Prop :=
+    | StartHere : forall x xs, In x xs -> UniqueChain 1 xs x x [x]
+    | Append : forall (start fin newTask : Task) (rest xs : list Task) (len : nat),
+        UniqueChain len xs start fin rest ->
+        ~ In newTask rest ->
+        In newTask xs ->
+        E fin newTask ->
+        UniqueChain (S len) xs start newTask (newTask::rest).
+
+Lemma uniqueChainListSS :
+    forall cl xs st ed vt,
+        UniqueChain cl xs st ed vt ->
+        exists (ul : list Task),
+            (NoDup ul /\ length ul = cl /\ forall u, In u ul -> (In u xs /\ In u vt)).
+Proof.
+    intros cl xs st ed vt chain.
+    induction chain.
+        - exists [x]. repeat split.
+            + apply NoDup_cons; auto. apply NoDup_nil.
+            + simpl in H0. destruct H0.
+                * rewrite H0 in H. exact H.
+                * exfalso. exact H0.
+            + exact H0.
+        - destruct IHchain as [ul [HnoDup [Hlen Hss]]].
+          exists (newTask :: ul). repeat split.
+            + apply NoDup_cons.
+                * intro. specialize (Hss newTask H2).
+                  destruct Hss as [_ Hcontra]. contradiction.
+                * exact HnoDup.
+            + simpl. rewrite Hlen. reflexivity.
+            + simpl in H2. destruct H2.
+                * rewrite H2 in H0. exact H0.
+                * specialize (Hss u H2). destruct Hss as [Hdone _].
+                  exact Hdone.
+            + simpl. simpl in H2. destruct H2.
+                * left. exact H2.
+                * right. specialize (Hss u H2). destruct Hss as [_ Hdone].
+                  exact Hdone.
+Qed.
+
+Fixpoint remove_first (x : Task) (xs : list Task) : list Task :=
+    match xs with
+        | nil => nil
+        | f :: r => if (Nat.eq_dec x f) then r else f :: remove_first x r
+    end.
+
+Lemma remove_first_in :
+  forall x y xs,
+    In y (remove_first x xs) ->
+    In y xs.
+Proof.
+    intros x y xs Hin.
+    induction xs.
+        - contradiction.
+        - destruct (Nat.eq_dec x a).
+            + simpl in Hin. rewrite e in Hin. simpl in Hin.
+
+Lemma remFirstNoDup :
+    forall x xs,
+        In x xs ->
+        NoDup xs ->
+        NoDup (remove_first x xs).
+Proof.
+    intros x xs Hin Hnd.
+    induction xs.
+        - contradiction.
+        - inversion_clear Hin. subst.
+            + simpl. destruct (Nat.eq_dec x x).
+                * inversion_clear Hnd. exact H0.
+                * contradiction.
+            + 
+
+Lemma moveOut:
+    forall (t : Task) (ts : list Task),
+        NoDup ts ->
+        In t ts ->
+        exists ts', (NoDup ts' /\ ~In t ts' /\ S (length ts') = length ts).
+Proof.
+    intros t ts Hnd Hin.
+    exists (remove_first t ts). repeat split.
+        - 
+          
+          
+
+Lemma uniqueSSlen:
+    forall (xs ul : list Task),
+        NoDup ul ->
+        (forall u, In u ul -> In u xs) ->
+        (length ul) <= (length xs).
+Proof.
+    intros xs ul Hnd Hss.
+    induction xs as [| x xs].
+        - destruct ul.
+            + simpl. auto.
+            + specialize (Hss t (or_introl (eq_refl t))).
+              contradiction.
+        - destruct (in_dec Nat.eq_dec x ul) as [H_in | H_nin].
+            + 
+            + assert (forall u, In u ul -> In u xs).
+                * intros someU Helem.
+                  specialize (Hss someU Helem). destruct Hss.
+                    -- rewrite H in H_nin. contradiction.
+                    -- exact H.
+                * specialize (IHxs H). simpl. lia.
+Lemma tooManyUnique :
+    forall (a : Type) (xs : list a),
+        (exists ul, (NoDup ul /\ length ul = (Datatypes.S (length xs)) /\ forall u, In u ul -> In u xs))
+        -> False.
+Proof.
+    intros a xs Hexists.
+    induction xs.
+        - destruct Hexists as [ul [Hnd [Hlen hss]]].
+          simpl in Hlen. destruct ul.
+            + simpl in Hlen. discriminate.
+            + specialize (hss a0 (or_introl (eq_refl a0))).
+              contradiction.
+        - destruct Hexists as [ul [Hnd [Hlen hss]]].
+          simpl in Hlen.
+    
+
+    
+Lemma chainToCycle :
+    forall len x y ts,
+        UniqueChain len x y ts -> clos_refl_trans Task E x y.
+Proof.
+    intros len x y ts chain.
+    induction chain.
+        - apply (rt_refl Task E x).
+        - apply (rt_trans Task E start0 fin newTask).
+            + exact IHchain.
+            + apply rt_step. assumption.
+Qed.
+*)
 
 Lemma allOutgoingEdgeContra :
     forall S,
@@ -578,6 +714,31 @@ Proof.
                   rewrite H0. left. reflexivity.
 Qed.
 
+Inductive Trace : Scheduler -> Scheduler -> Prop :=
+| TraceRefl : forall S, finished S -> Trace S S
+| TraceStep : forall S S' S'',
+    step S S' ->
+    Trace S' S'' ->
+    Trace S S''.
+
+Theorem existsTrace:
+    forall S, wfState S -> exists fin, Trace S fin /\ finished fin.
+Proof.
+    apply (well_founded_induction (well_founded_ltof Scheduler mu) (fun x => wfState x -> exists fin, Trace x fin /\ finished fin)).
+    intros x Ih Hwfx.
+    destruct (classic (finished x)).
+        - exists x. split.
+            + apply (TraceRefl x). exact H.
+            + exact H.
+        - pose proof (progress x Hwfx H) as Hstep.
+          destruct Hstep as [n Hnstep].
+          pose proof (measureDecreases x n Hnstep) as Hmu.
+          pose proof (wfPreserved x n Hwfx Hnstep) as Hnwf.
+          destruct (Ih n Hmu Hnwf) as [fin [restTrace Hfin]].
+          exists fin. split.
+            + apply (TraceStep x n fin Hnstep restTrace).
+            + exact Hfin.
+Qed.
 
 
 End Scheduler.
