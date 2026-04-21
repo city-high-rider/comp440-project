@@ -3,7 +3,7 @@
 )
 
 #title()
-#heading(outlined: false, depth: 2)[(TODO: My ID here) - COMP440 Assignment One]
+#heading(outlined: false, depth: 2)[(My ID here) - ENGR340 Assignment One]
 #outline()
 
 #pagebreak()
