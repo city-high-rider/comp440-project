@@ -9,7 +9,7 @@
 #pagebreak()
 
 = Aims and Objectives
-The objective of this report is to formalise and prove the termination of a scheduler over a directed acyclic dependency graph (DAG) in both Idris2 and Coq, and to use this development for comparing how both systems support reasoning about the same problem. Specifically, we will look at how proofs and propositions are encoded, their construction either as executable programs or via tactic-based reasoning, and how the underlying logic is checked. We also investigate the practical experience of using both systems, including interactive tooling as well as how proofs can be read and written. This is supplemented by a brief subjective reflection on their overall usability of these tools.
+The objective of this report is to formalise and prove the termination of a scheduler over a directed acyclic dependency graph (DAG) in both Idris2 and Coq, and to use this development to compare how both systems support reasoning about the same problem. Specifically, we will look at how proofs and propositions are encoded, their construction either as executable programs or via tactic-based reasoning, and how the underlying logic is checked. We also investigate the practical experience of using both systems, including interactive tooling as well as how proofs can be read and written. This is supplemented by a brief subjective reflection on the overall usability of these tools.
 
 = Preliminary Models, Definitions, and Proofs
 
@@ -190,7 +190,7 @@ Thus, `anyProof {a = LTE 1 0}` is valid evidence that $1 < 0$ as far as the type
 1. It is covering
 2. Every function the implementation calls is also total
 3. In a recursive call, one argument must be _syntactially smaller_. That is, it must be a sub-term of the current argument. 
-The totality checker is clever enough that usually, no manual intervention by the programmer is required. However, for proofs that instead use a strictly decreasing measure to justify termination, some more work is required, which will be discussed in more detail at the end of the Idris section.
+The totality checker is clever enough that usually, no manual intervention by the programmer is required. However, for proofs that instead use a strictly decreasing measure to justify termination, some more work is required, which will be discussed in more detail later.
 
 Secondly, it is worth mentioning why the Idris proof is so terse, as it will provide a bit of context when we later discuss the languages' tooling and compare it to tactic-based theorem proving like Rocq. The compactness mainly comes from the fact that most of the "reasoning" is delegated to the type checker's constraint solving mechanisms rather than being written explicitly in the proof. Recall the written `LTE` transitivity proof from earlier: most of the steps were case analysis on constructors, refinement of type indices, and elimination of contradictory cases. All of this mechanical work is automatically handled in a process called _unification_, which solves equations between types and fills in implicit parameters. This is why we did not need to supply values such as `someNumber`, since the type checker infers them in order to make the expressions type correctly. Finally, termination is also automatically handled by a totality checker, meaning that explicit termination arguments are often unnecessary.
 
