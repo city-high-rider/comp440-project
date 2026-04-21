@@ -434,7 +434,7 @@ findTraceP s =
           in
           (final ** (finalFinished, WithStep nextStep restTrace))
 ```
-Even though it typechecks, the totality checker will reject it:
+Even though it is well-typed, the totality checker will reject it:
 ```
 Error: findTraceP is not total, possibly not terminating due to recursive path Trace.findTraceP
 ```
@@ -448,7 +448,7 @@ sizeInd :
   (z : a) ->
   P z
 ```
-Let's work through the type signature. It mentions a `Sized` interface and a `Smaller` relation. A `Sized` type `a` must have a function `size : a -> Nat`. Intuitively, one value of `a` is smaller than another if its size is stricly less:
+Let's work through the type signature. It mentions a `Sized` interface and a `Smaller` relation. A `Sized` type `a` must have a function `size : a -> Nat`. Intuitively, one value of `a` is smaller than another if its size is strictly less:
 ```idris
 Smaller x y = size x < size y
 ```
@@ -477,9 +477,9 @@ This is the induction hypothesis. For any `y`, if we can justify that it is smal
 ```
 (x : a) -> ((y : a) -> Smaller y x -> P y) -> P x
 ```
-which is exactly the "inductive step" part of a proof by induction: we have some arbitrary `x`, and the induction hypothesis states that `P` holds for all elements smaller than `x`. Then, the objective is to show that `P x` holds. On closer inspection, it's also apparent that this covers the _base_ case as well. If `x` happens to be the smallest element, then it will be impossible to construct `Smaller y x` for any `y`, making the induction hypothesis inaccessible. Thus, we are also obligated to prove `P x` holds for the smallest `x` without making use of any additional hypotheses.
+which is exactly the "inductive step" part of a proof by induction: we have some arbitrary `x`, and the induction hypothesis states that `P` holds for all elements smaller than `x`. Then, the objective is to show that `P x` holds. On closer inspection, it's also apparent that this subsumes the _base_ case as well. If `x` is the smallest element, then it will be impossible to construct `Smaller y x` for any `y`, making the induction hypothesis inaccessible. Thus, we are also obligated to prove `P` holds for the smallest element without making use of any additional hypotheses.
 
-So, the left side of the arrow asks us to provide a typical proof by induction: Prove `P x` for the smallest `x`, then given a bigger `x` and a proof that `P` holds for all smaller elements, use it to conclude `P` holds for the bigger `x` as well. Now, recall the right-side of the outermost arrow: once we provide this proof by induction, what can we conclude?
+So, the left side of the arrow asks us to provide a typical proof by induction: Prove `P` holds for the smallest elements, then given a bigger `x` and a proof that `P` holds for all smaller elements, use it to conclude `P` holds for `x` as well. Now, recall the right-side of the outermost arrow: once we provide this proof by induction, what can we conclude?
 ```
 (z : a) -> P z
 ```
@@ -502,7 +502,61 @@ findTraceHelper cur rec =
         in
         (last ** (lastFinished, WithStep step restTrace))
 ```
-It follows the same shape as before, but with some changes to the `Right` branch. The start is the same: check if the current state is finished or not. If it is, there's no need to invoke the induction hypothesis; we may just return a trivial trace with zero steps that starts and ends at the current state. However, if the current state is not finished, then there is a step to a next state. The main change lies in the next part of the proof, which is getting the trace from the next state to the finished state. Originally, we made a recursive call, but here we use the induction hypothesis. In order to invoke it, we must also show that the next state is "smaller" than the current one, which is exactly the decreasing measure lemma. The proof concludes in the same way: we take the step from the current state to the next state and prepend it to the rest of the trace, forming a trace from the current state to the finished state.
+It follows the same shape as before, but with some changes to the `Right` branch. The start is the same: check if the current state is finished or not. If it is, there's no need to invoke the induction hypothesis; we may just return a trivial trace with zero steps that starts and ends at the current state. However, if the current state is not finished, then there is a step to a next state. The main change lies in the next part of the proof, which is getting the trace from the next state to the finished state. Originally, we made a recursive call, but here we use the induction hypothesis. In order to invoke it, we must also show that the next state is "smaller" than the current one, which is exactly the decreasing measure lemma. The proof concludes in the same way: we take the step from the current state to the next state and prepend it to the rest of the trace, forming a trace from the current state to the finished state. Finally, we can use this inductive proof with `sizeInd` to conclude that all scheduler states have a trace to a finished state:
+```
+total
+findTrace :
+  {ts : List Task} ->
+  {dg : DAG ts} ->
+  (s : Scheduler dg) ->
+  (finish : Scheduler dg ** (Finished finish, Trace s finish))
+findTrace = sizeInd {P = \sched => (finish : Scheduler dg ** (Finished finish, Trace sched finish))} findTraceHelper
+```
+which is now accepted by the totality checker.
+
+In the Coq proof, we also have a measure on scheduler states which strictly decreases with each step. Again, this ensures that we can't take steps repeatedly. We aim to show a similar goal:
+```coq
+Theorem existsTrace:
+  forall S, wfState S -> exists fin, Trace s fin /\ finished fin.
+Proof.
+```
+The well-founded induction machinery we use is very similar to Idris':
+```coq
+well_founded_induction:
+  well_founded R ->
+  forall P,
+    (forall x, (forall y, R y x -> P y) -> P x) ->
+    forall x, P x
+```
+And the high-level proof proceeds in an identical manner:
+  - If the current state is finished, return a trivial trace
+  - Otherwise, use the progress and decreasing measure lemmas to obtain a step to a smaller next state.
+  - Apply the induction hypothesis to get a terminal trace, and prepend the step to it.
+
+```coq
+Theorem existsTrace:
+    forall S, wfState S -> exists fin, Trace S fin /\ finished fin.
+Proof.
+    apply (well_founded_induction (well_founded_ltof Scheduler mu) (fun x => wfState x -> exists fin, Trace x fin /\ finished fin)).
+    intros x Ih Hwfx.
+    destruct (classic (finished x)).
+        - exists x. split.
+            + apply (TraceRefl x). exact H.
+            + exact H.
+        - pose proof (progress x Hwfx H) as Hstep.
+          destruct Hstep as [n Hnstep].
+          pose proof (measureDecreases x n Hnstep) as Hmu.
+          pose proof (wfPreserved x n Hwfx Hnstep) as Hnwf.
+          destruct (Ih n Hmu Hnwf) as [fin [restTrace Hfin]].
+          exists fin. split.
+            + apply (TraceStep x n fin Hnstep restTrace).
+            + exact Hfin.
+Qed.
+```
+
+In this case, both the Coq and Idris proofs closely resemble each other. There is, however, a conceptual difference worth noting: In Idris, the proof is expressed as a recursive function which constructs a trace, and we use well-founded induction to justify that it terminates. In Coq, we define no such recursive function. Instead, we use well-founded induction directly as a proof principle to establish the existence of a trace.
+
+In both systems, we ultimately rely on the same idea for termination: it's impossible to move to strictly smaller states indefinitely. In Idris, this idea is expressed as a terminating program, and in Coq, it's expressed as an induction principle. Notably, in Coq we do not compute a trace, we just show that one exists.
 
 = Tooling and ergonomics
 Both Idris and Coq provide several interactive features that assist with theorem proving. Idris offers lots of independent functionalities which help directly construct terms, such as generating function bodies from type signatures, case-splitting on variables, inspecting the types of holes and local variables, lifting holes into separate lemmas, performing expression search, and checking the entire file for correctness. These tools support Idris' constructive workflow well: after defining the type of a function, it is possible to generate the body, split on arguments to create sub-goals, and inspect the placeholder holes to determine the context in seconds with few keystrokes. In some cases, the type checker is even able to automatically discharge certain input combinations for being impossible. Using holes allows the programmer to get feedback from the type checker, even if the implementation is not in a complete state. However, in practice, Idris' interactive editing features do have a few notable sharp edges. Raising a hole to a separate lemma often introduces an excessive number of parameters, since everything in scope is included by default. Ocasionally, case-splitting can produce branches that the totality checker does not recognise as covering, which requires some manual restructuring. Furthermore, when working with complicated expressions (especially arithmetic ones), the type information displayed for holes can become verbose and hard to understand.
