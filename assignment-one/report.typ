@@ -240,9 +240,6 @@ From the type signature and comment, it's possible to understand what this lemma
 
 To solve these problems, tactics provide a higher-level interface for constructing proofs. Rather than explicitly building proof terms, they allow us to work in terms of goals and subgoals. Each tactic incrementally refines the proof state while generating a term that is ultimately checked using the same unification techniques.
 
-== Classical axioms
-TODO: write me!
-
 = Comparing the Idris and Coq proofs
 There is quite a bit of code in both proofs, however much of this is taken up by rather mechanical lemmas which are not very interesting to discuss. Here is a map of the source code:
 #table(
@@ -417,6 +414,95 @@ Notice that the proof itself is just a program that uses pattern matching and re
 In contrast, I was not able to complete this lemma in Coq. The difficulty is not that the statement is false or that Coq is incapable of expressing it, but rather that this kind of argument does not align well with the chosen model. Recall that we chose to treat the dependency graph as an abstract relation together with properties such as acyclicity, rather than an inductively defined data structure that can be traversed, as in the Idris development. The model we chose for Coq was not arbitrary, and it significantly simplified other parts of the development. In particular, we did not need to parameterise scheduler states over a specific graph, and state transitions did not need to carry around or reconstruct as many auxilliary proofs. This made many of the important objects, such as states, steps, and traces nicer to work with. However, this convenience comes at a cost: the graph is not available as an inductive structure, so arguments that rely on traversing it (such as these two lemmas) become substantially more difficult to formalize. Doing so would require building a non-trivial chain of dependencies in the transitive closure of the relation and showing that it eventually forms a cycle, which is much more involved than the direct recursive search used in the Idris proof. 
 
 Now we have seen two proofs, one more suited for tactic-based reasoning, and another more suited to computation. The relational and property based style of reasoning seen in Coq was much more natural for high-level pen-and-paper arguments, but made computational proofs like this one much harder to express. In contrast, Idris allows the proof to be written directly as a terminating program, making this kind of constructive search argument much more straightforward to encode. However, it can make proofs that involve lots of symbolic manipulation more tedious to write, harder to read, and more cluttered than a tactic based approach.
+
+== Termination theorem and well-founded induction
+Having proved both progress and that there is a measure which strictly decreases across steps, proving the termination theorem is not conceptually difficult: check if the current state is finished; If it is, we are done - otherwise, it's possible to take another step and try again. Since the measure decreases with each step, it is impossible to take steps indefinitely. However, formalizing this in theorem provers raises an issue: consider the following Idris implementation, which does exactly what we described:
+```idris
+total
+findTraceP :
+  {ts : List Task} ->
+  {dg : DAG ts} ->
+  (s : Scheduler dg) ->
+  (finish : Scheduler dg ** (Finished finish, Trace s finish))
+findTraceP s =
+  case findStep s of
+       (Left currentIsFinished) =>
+          (s ** (currentIsFinished, StartHere s))
+       (Right (nextState ** nextStep)) =>
+          let
+            (final ** (finalFinished, restTrace)) = findTraceP nextState
+          in
+          (final ** (finalFinished, WithStep nextStep restTrace))
+```
+Even though it typechecks, the totality checker will reject it:
+```
+Error: findTraceP is not total, possibly not terminating due to recursive path Trace.findTraceP
+```
+Recall that the Idris totality checker works conservatively: it will only accept a recursive call to be terminating if one of the arguments passed to it is a syntactic subterm of one of the current arguments. When we make the recursive call, we pass `nextState`, which was obtained from calling `findStep s`. The next state is related to the current one by an arbitrary function call, and it's not a syntactic subterm of `s`. Thus, the totality checker can't automatically verify that the recursive calls will eventually terminate. Thankfully, the `Control.WellFounded` module in the standard library contains lots of helper functions to justify termination with a decreasing measure. Namely:
+```idris
+total
+sizeInd :
+  Sized a =>
+  {0 P : a -> Type} ->
+  ((x : a) -> ((y : a) -> Smaller y x -> P y) -> P x) ->
+  (z : a) ->
+  P z
+```
+Let's work through the type signature. It mentions a `Sized` interface and a `Smaller` relation. A `Sized` type `a` must have a function `size : a -> Nat`. Intuitively, one value of `a` is smaller than another if its size is stricly less:
+```idris
+Smaller x y = size x < size y
+```
+The `Sized` type and `size` function directly correspond to our `Scheduler` and measure respectively:
+```idris
+Sized (Scheduler dg) where
+  size = measure
+```
+Next, the function has to infer or be provided with the proposition `P` we would like to prove, which should involve the sized type (in this case, the scheduler state). We would like to show that, for a given starting state, there exists a finished state and a trace to it. Thus,
+```idris
+P = \sched => (finish : Scheduler dg ** (Finished finish, Trace sched finish))
+```
+After we have established the proposition we wish to prove as well as the relevant objects and measure, we reach the core part of the function. For the sake of building understanding, I will omit parts of the type signature and gradually reveal them:
+```idris
+((x : a) -> ((y : a) -> Smaller y x -> P y) -> P x) -> ((z : a) -> P z)
+```
+Let's look at the left side of the outermost arrow:
+```
+(x : a) -> ... -> P x
+```
+Given an `x`, we have to show that `P x` holds. However, we are provided one more thing to help us:
+```
+(y : a) -> Smaller y x -> P y
+```
+This is the induction hypothesis. For any `y`, if we can justify that it is smaller than `x`, we can conclude that `P y` holds. Putting these parts together yields
+```
+(x : a) -> ((y : a) -> Smaller y x -> P y) -> P x
+```
+which is exactly the "inductive step" part of a proof by induction: we have some arbitrary `x`, and the induction hypothesis states that `P` holds for all elements smaller than `x`. Then, the objective is to show that `P x` holds. On closer inspection, it's also apparent that this covers the _base_ case as well. If `x` happens to be the smallest element, then it will be impossible to construct `Smaller y x` for any `y`, making the induction hypothesis inaccessible. Thus, we are also obligated to prove `P x` holds for the smallest `x` without making use of any additional hypotheses.
+
+So, the left side of the arrow asks us to provide a typical proof by induction: Prove `P x` for the smallest `x`, then given a bigger `x` and a proof that `P` holds for all smaller elements, use it to conclude `P` holds for the bigger `x` as well. Now, recall the right-side of the outermost arrow: once we provide this proof by induction, what can we conclude?
+```
+(z : a) -> P z
+```
+As expected, it means `P z` holds for any `z`. Going back to the termination theorem, we can slightly tweak the original implementation to fit the required induction proof shape:
+```idris
+total
+findTraceHelper :
+  {ts : List Task} ->
+  {dg : DAG ts} ->
+  (cur : Scheduler dg) ->
+  (rec : (next : Scheduler dg) -> Smaller next cur -> (finish : Scheduler dg ** (Finished finish, Trace next finish))) ->
+  (finish : Scheduler dg ** (Finished finish, Trace cur finish))
+findTraceHelper cur rec =
+  case findStep cur of
+       Left isDone => (cur ** (isDone, StartHere cur))
+       Right (nextOne ** step) =>
+        let
+          measureDec = stepDecreasesMeasure step
+          (last ** (lastFinished, restTrace)) = rec nextOne (rewrite measureDec in reflexive {ty = Nat, rel = LTE})
+        in
+        (last ** (lastFinished, WithStep step restTrace))
+```
+It follows the same shape as before, but with some changes to the `Right` branch. The start is the same: check if the current state is finished or not. If it is, there's no need to invoke the induction hypothesis; we may just return a trivial trace with zero steps that starts and ends at the current state. However, if the current state is not finished, then there is a step to a next state. The main change lies in the next part of the proof, which is getting the trace from the next state to the finished state. Originally, we made a recursive call, but here we use the induction hypothesis. In order to invoke it, we must also show that the next state is "smaller" than the current one, which is exactly the decreasing measure lemma. The proof concludes in the same way: we take the step from the current state to the next state and prepend it to the rest of the trace, forming a trace from the current state to the finished state.
 
 = Tooling and ergonomics
 Both Idris and Coq provide several interactive features that assist with theorem proving. Idris offers lots of independent functionalities which help directly construct terms, such as generating function bodies from type signatures, case-splitting on variables, inspecting the types of holes and local variables, lifting holes into separate lemmas, performing expression search, and checking the entire file for correctness. These tools support Idris' constructive workflow well: after defining the type of a function, it is possible to generate the body, split on arguments to create sub-goals, and inspect the placeholder holes to determine the context in seconds with few keystrokes. In some cases, the type checker is even able to automatically discharge certain input combinations for being impossible. Using holes allows the programmer to get feedback from the type checker, even if the implementation is not in a complete state. However, in practice, Idris' interactive editing features do have a few notable sharp edges. Raising a hole to a separate lemma often introduces an excessive number of parameters, since everything in scope is included by default. Ocasionally, case-splitting can produce branches that the totality checker does not recognise as covering, which requires some manual restructuring. Furthermore, when working with complicated expressions (especially arithmetic ones), the type information displayed for holes can become verbose and hard to understand.
