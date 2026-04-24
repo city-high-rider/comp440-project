@@ -9,3 +9,5 @@
 *.vio
 *.glob
 .coq-native/
+dist-newstyle/
+.liquid/

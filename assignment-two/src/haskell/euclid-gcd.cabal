@@ -57,6 +57,8 @@ common warnings
 executable euclid-gcd
     import:           warnings
     main-is:          Main.hs
-    build-depends:    base ^>=4.21.0.0
+    build-depends:
+        base ^>=4.21.0.0,
+        liquidhaskell
     hs-source-dirs:   app
     default-language: GHC2024

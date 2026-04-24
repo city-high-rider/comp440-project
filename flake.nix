@@ -72,6 +72,7 @@
             typstyle
             tinymist
             cabal-install
+            ghciwatch
             haskellPkgs.haskell-language-server
             haskellPkgs.fourmolu
             z3
