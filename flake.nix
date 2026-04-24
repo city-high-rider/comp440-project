@@ -6,9 +6,11 @@
   };
   outputs = { nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = nixpkgs.legacyPackages.${system};
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        haskellPkgs = pkgs.haskell.packages.ghc9122;
       in {
-        devShells.default = pkgs.mkShell {
+        devShells.assignment-one = pkgs.mkShell {
           packages = with pkgs; [
             idris2
             # Because Helix does not support Idris interactive edititng.
@@ -61,7 +63,20 @@
             tinymist
           ];
 
-          shellHook = "echo Entered Comp Devshell...";
+          shellHook = "echo Entered Assignment One Devshell...";
+        };
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
+            typst
+            typst-live
+            typstyle
+            tinymist
+            cabal-install
+            haskellPkgs.haskell-language-server
+            haskellPkgs.fourmolu
+            z3
+          ];
+          shellHook = "echo Entered Assignment Two Devshell...";
         };
       });
 }
