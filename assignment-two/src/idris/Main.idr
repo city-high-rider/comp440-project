@@ -28,24 +28,48 @@ lteStrengthen {a = (S left)} {b = (S right)} (LTESucc x) f =
   LTESucc (lteStrengthen x fRec)
 
 public export total
-modHelp : (r : Nat) -> Nat -> (b : Nat) -> IsSucc b -> (LT r b) -> (rem : Nat ** LT rem b)
-modHelp r 0 b bnz rltb = (r ** rltb)
-modHelp r (S k) 0 bnz rltb = absurd bnz
-modHelp r (S k) (S j) bnz rltb =
+modHelp :
+  (q : Nat) ->
+  (r : Nat) ->
+  (remaining : Nat) ->
+  (b : Nat) ->
+  IsSucc b ->
+  LT r b ->
+  (q' : Nat ** r' : Nat ** ( LT r' b, q' * b + r' = q * b + r + remaining))
+modHelp q r 0 b bnz rltb = (q ** r ** (rltb, rewrite (plusZeroRightNeutral (plus (mult q b) r)) in Refl))
+modHelp q r (S k) 0 bnz rltb = absurd bnz
+modHelp q r (S k) (S j) bnz rltb =
   case decEq r j of
-    (Yes prf) => modHelp 0 k (S j) bnz (LTESucc LTEZero)
-    (No contra) =>
-      let
-        cbump = neqBump contra
-        rltbPrime = lteStrengthen rltb cbump
-      in
-      modHelp (S r) k (S j) bnz rltbPrime
-  
+       (Yes Refl) =>
+          let
+            (qrec ** rrec ** (rrltb, prf)) = modHelp (S q) 0 k (S j) bnz (LTESucc LTEZero)
+          in
+          (qrec ** rrec ** (rrltb,
+          rewrite prf in
+          rewrite plusZeroRightNeutral (plus r (mult q (S r))) in
+          rewrite plusSuccRightSucc (plus r (mult q (S r))) k in
+          rewrite plusCommutative r (mult q (S r)) in Refl))
+       (No contra) =>
+          let
+            nextPrf = lteStrengthen rltb (neqBump contra)
+            (qrec ** rrec ** (rrltb, prf)) = modHelp q (S r) k (S j) bnz nextPrf
+          in
+          (qrec ** rrec ** (rrltb,
+          rewrite prf in
+          rewrite sym (plusSuccRightSucc (mult q (S j)) r) in
+          rewrite plusSuccRightSucc (plus (mult q (S j)) r) k in Refl))
+
 
 public export total
-mod : Nat -> (b : Nat) -> IsSucc b -> (rem : Nat ** LT rem b)
+mod : (a : Nat) -> (b : Nat) -> IsSucc b -> (q : Nat ** rem : Nat ** (LT rem b, a=q*b+rem))
 mod a 0 bnz = absurd bnz
-mod a (S k) bnz = modHelp 0 a (S k) bnz (LTESucc LTEZero)
+mod a (S k) bnz =
+  let
+    (q ** r ** (rltb, prf)) = modHelp 0 0 a (S k) bnz (LTESucc LTEZero)
+  in
+  (q ** r ** (rltb, sym prf))
+
+{-
 
 public export total
 data EucArgPair = MkEPair Nat Nat
@@ -65,3 +89,5 @@ eucHelper (MkEPair a (S k)) rec =
 public export total
 euc : Nat -> Nat -> Nat
 euc a b = sizeRec (eucHelper) (MkEPair a b)
+
+-}
