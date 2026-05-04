@@ -69,8 +69,6 @@ mod a (S k) bnz =
   in
   (q ** r ** (rltb, sym prf))
 
-{-
-
 public export total
 data EucArgPair = MkEPair Nat Nat
 
@@ -82,12 +80,10 @@ eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> Nat) -> Nat
 eucHelper (MkEPair a 0) rec = a
 eucHelper (MkEPair a (S k)) rec =
   let
-    (nextRight ** isLess) = mod a (S k) ItIsSucc
+    (_ ** nextRight ** (isLess, _)) = mod a (S k) ItIsSucc
   in
   rec (MkEPair (S k) nextRight) isLess
 
 public export total
 euc : Nat -> Nat -> Nat
 euc a b = sizeRec (eucHelper) (MkEPair a b)
-
--}
