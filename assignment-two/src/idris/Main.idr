@@ -70,20 +70,41 @@ mod a (S k) bnz =
   (q ** r ** (rltb, sym prf))
 
 public export total
+divLem : {a,b,q,r,d : Nat} -> a=q*b+r -> Divides d b -> Divides d r -> Divides d a
+divLem prf (k1 ** p1) (k2 ** p2) =
+  rewrite prf in
+  rewrite p1 in
+  rewrite p2 in
+  rewrite (multAssociative q k1 d) in
+  rewrite sym (multDistributesOverPlusLeft (q*k1) k2 d) in
+  (plus (mult q k1) k2 ** Refl)
+
+public export total
 data EucArgPair = MkEPair Nat Nat
 
 Sized EucArgPair where
   size (MkEPair a b) = b
 
 public export total
-eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> Nat) -> Nat
-eucHelper (MkEPair a 0) rec = a
-eucHelper (MkEPair a (S k)) rec =
-  let
-    (_ ** nextRight ** (isLess, _)) = mod a (S k) ItIsSucc
-  in
-  rec (MkEPair (S k) nextRight) isLess
+EucProp : EucArgPair -> Type
+EucProp (MkEPair l r) = (d : Nat ** (Divides d l, Divides d r))
 
 public export total
-euc : Nat -> Nat -> Nat
-euc a b = sizeRec (eucHelper) (MkEPair a b)
+eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> EucProp y) -> EucProp x
+eucHelper (MkEPair a 0) _ =
+  (a **
+    ( (1 ** rewrite plusZeroRightNeutral a in Refl)
+    , (0 ** Refl)
+    ))
+eucHelper theseArgs@(MkEPair a (S p)) rec =
+  let
+    (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
+    (dRec ** (p1, p2)) = rec (MkEPair (S p) r) rltb
+    dda : Divides dRec a = divLem prfArith p1 p2
+  in
+  (dRec ** (dda, p1))
+
+public export total
+euc : (a : Nat) -> (b : Nat) -> (c : Nat ** (Divides c a, Divides c b))
+euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
+
