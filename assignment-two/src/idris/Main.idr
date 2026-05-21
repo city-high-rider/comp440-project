@@ -119,25 +119,44 @@ Sized EucArgPair where
   size (MkEPair a b) = b
 
 public export total
+CommonDiv : Nat -> Nat -> Nat -> Type
+CommonDiv d a b = (Divides d a, Divides d b)
+
+public export total
 EucProp : EucArgPair -> Type
-EucProp (MkEPair l r) = (d : Nat ** (Divides d l, Divides d r))
+EucProp (MkEPair l r) =
+  (d : Nat ** (CommonDiv d l r, (o : Nat) -> CommonDiv o l r -> Divides o d))
+
+public export total
+eucGcdBaseCase : (a : Nat) -> (o : Nat) -> ((k : Nat ** a = mult k o), (k : Nat ** 0 = mult k o)) -> (k : Nat ** a = mult k o)
+eucGcdBaseCase a _ ((k1 ** p1), _) =
+  (k1 ** rewrite p1 in Refl)
 
 public export total
 eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> EucProp y) -> EucProp x
 eucHelper (MkEPair a 0) _ =
-  (a **
-    ( (1 ** rewrite plusZeroRightNeutral a in Refl)
-    , (0 ** Refl)
-    ))
+  (a ** 
+    (( (1 ** rewrite plusZeroRightNeutral a in Refl)
+     , (0 ** Refl))
+     , eucGcdBaseCase a)
+  )
 eucHelper theseArgs@(MkEPair a (S p)) rec =
   let
     (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
-    (dRec ** (p1, p2)) = rec (MkEPair (S p) r) rltb
+    (dRec ** ((p1, p2), p3)) = rec (MkEPair (S p) r) rltb
     dda : Divides dRec a = divLem prfArith p1 p2
   in
-  (dRec ** (dda, p1))
+  (dRec ** ((dda, p1), \o, ((k1 ** pr1), odivb@(k2 ** pr2)) =>
+    let
+      prf' : (k1*o = plus (mult q (S p)) r) = sym (rewrite sym prfArith in pr1)
+      prf'' : (k1*o = plus (mult q (k2*o)) r) = rewrite sym pr2 in prf'
+      prf''' : (k1*o = ((q*k2)*o)+r) = rewrite sym (multAssociative q k2 o) in prf''
+    in
+    p3 o (odivb, (divCancelLem k1 (q*k2) o r prf'''))
+  ))
 
 public export total
-euc : (a : Nat) -> (b : Nat) -> (c : Nat ** (Divides c a, Divides c b))
+euc : (a : Nat) -> (b : Nat) ->
+      (c : Nat ** (CommonDiv c a b, (o : Nat) -> CommonDiv o a b -> Divides o c))
 euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
 
