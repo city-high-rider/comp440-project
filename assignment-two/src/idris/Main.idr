@@ -80,6 +80,39 @@ divLem prf (k1 ** p1) (k2 ** p2) =
   (plus (mult q k1) k2 ** Refl)
 
 public export total
+sumZeroArgsZero : {a,b : Nat} -> a + b = 0 -> (a = 0, b = 0)
+sumZeroArgsZero {a = 0} {b = 0} Refl = (Refl, Refl)
+sumZeroArgsZero {a = 0} {b = (S k)} prf impossible
+sumZeroArgsZero {a = (S k)} {b = 0} prf impossible
+sumZeroArgsZero {a = (S k)} {b = (S j)} prf impossible
+
+public export total
+plusConstCancelLeft : (c : Nat) -> (l : Nat) -> (r : Nat) -> c+l = c+r -> l=r 
+plusConstCancelLeft 0 l l Refl = Refl
+plusConstCancelLeft (S k) l r prf =
+  plusConstCancelLeft k l r (injective prf)
+
+public export total
+divCancelLem : 
+  (k1 : Nat) ->
+  (k2 : Nat) ->
+  (d : Nat) ->
+  (r : Nat) ->
+  (k1 * d = k2 * d + r) ->
+  Divides d r
+divCancelLem k1 0 d r prf = (k1 ** rewrite prf in Refl)
+divCancelLem 0 (S n) d r prf =
+  let
+    (_, rzero) = sumZeroArgsZero (sym prf)
+  in
+  (0 ** rzero)
+divCancelLem (S m) (S n) d r prf =
+  let
+    prf' : (d+m*d = d+(n*d+r)) = rewrite (plusAssociative d (n*d) r) in prf
+  in
+  divCancelLem m n d r (rewrite (plusConstCancelLeft d (m*d) (n*d+r) prf') in Refl)
+
+public export total
 data EucArgPair = MkEPair Nat Nat
 
 Sized EucArgPair where
