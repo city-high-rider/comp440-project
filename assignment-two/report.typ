@@ -104,7 +104,7 @@ The first thing we will verify is termination, as the totality checker cannot ve
 
 == Termination proof
 
-This is done with well-founded recursion. We would like to argue that the rightmost argument strictly decreases with each call, and thus it must always reach zero.
+This is done with well-founded recursion. We would like to argue that the rightmost argument of `euc` strictly decreases with each call, and thus it must always reach zero.
 
 Although we can intuitively see that $a mod b < b$, we will still need to modify the `modHelp` function to produce this proof alongside the result, so that we may use it in the well-founded implementation to justify making the recursive call.
 
@@ -148,8 +148,47 @@ mod a 0 bnz = absurd bnz
 mod a (S k) bnz = modHelp 0 a (S k) bnz (LTESucc LTEZero)
 ```
 
-In the previous implementation, we repeatedly decremented the dividend and incremented the remainder, resetting the remainder to zero if it became equal to the modulus. Mechancially, this implementation does the same thing, but it also carries a proof that the current remainder is strictly less than the modulus, augmenting it with each recursive call.
+In the previous implementation, we repeatedly decremented the dividend and incremented the remainder, resetting the remainder to zero if it became equal to the modulus. Mechanically, this implementation does the same thing, but it also carries a proof that the current remainder is strictly less than the modulus, augmenting it with each recursive call.
 
-Recall that the modulus is non-zero, that is, it is the successor of some number `S(j)`. Thus, in the case where we reset the remainder back to zero, it is easy to construct a proof that `Z < S(j)`. On the other hand, incrementing the remainder requires more steps to justify. Firstly, we have the current proof in scope: `r < (S j)`, which desugars to `r <= j`. We also have access to a proof that `r != j`. We may combine `r <= j` and `r != j` to conclude that `r < j`, and consequently `S r < S j`, thus verifying that the incremented remainder is still strictly smaller than the modulus.
+Recall that the modulus is non-zero; that is, it is the successor of some number `S j`. Thus, in the case where we reset the remainder back to zero, it is easy to construct a proof that `Z < S j`. On the other hand, incrementing the remainder requires more steps to justify. Firstly, we have the current proof in scope: `r < (S j)`, which desugars to `S r <= S j`. We also have access to a proof that `r != j`. Thus it follows that `S r != S j`. We may then combine `S r <= S j` with `S r != S j` to conclude that `S r < S j`, hence verifying that the incremented remainder is still strictly smaller than the modulus. These intermediate steps are handled by the `neqBump` and `lteStrengthen` lemmas respectively.
+
+Finally, the `mod` wrapper is also updated to return a proof that the remainder is strictly smaller than the modulus. With this, we can move to rewriting the `euc` implementation using `Control.WellFounded.sizeRec`. Here is its signature:
+```
+total
+sizeRec : Sized a =>
+  ((x : a) -> ((y : a) -> Smaller y x -> b) -> b) ->
+  a -> b
+```
+Let us focus on the first argument, namely: `(x : a) -> ((y : a) -> Smaller y x -> b) -> b`. This is a helper function which accepts an `x` and a "recursive oracle," which permits us to call the helper function recursively for any `y`, provided we can prove that `y` is smaller than `x`. The remaining type signature of `sizeRec` indicates that if we can implement such a helper, we may pass in any input and compute the result in a total manner.
+
+Of course, we must first define a "size" for our inputs. Since we are arguing that the second argument passed to `euc` is strictly decreasing between recursive calls, it makes sense to define it like this:
+```
+public export total
+data EucArgPair = MkEPair Nat Nat
+
+Sized EucArgPair where
+  size (MkEPair a b) = b
+```
+Now we have all the pieces to write the helper:
+```
+public export total
+eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> Nat) -> Nat
+eucHelper (MkEPair a 0) rec = a
+eucHelper (MkEPair a (S k)) rec =
+  let
+    (nextRight ** isLess) = mod a (S k) ItIsSucc
+  in
+  rec (MkEPair (S k) nextRight) isLess
+```
+If the second argument is zero, there is no need to invoke the "recursive oracle," and we simply return `a`, as usual. If it is instead nonzero i.e. a successor of some number `S k`, we compute `a mod (S k)` to obtain the remainder and a proof that the remainder is less than the modulus, unpacked as `nextRight` and `isLess` respectively. With this proof, we can then call the function recursively with the next argument pair, `(S k), nextRight`.
+
+Finally, we can use the helper along with `sizeRec` to get a total `euc` function:
+```
+public export total
+euc : Nat -> Nat -> Nat
+euc a b = sizeRec (eucHelper) (MkEPair a b)
+```
+
+
 
 
