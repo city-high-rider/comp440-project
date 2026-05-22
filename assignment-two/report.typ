@@ -103,8 +103,7 @@ This is a functional, but unverified implementation of the modulo function and t
 The first thing we will verify is termination, as the totality checker cannot verify that the current implementation terminates. This is because it verifies totality by checking that the arguments passed to each recursive call are an exact *syntactic* subterm of the current arguments, which is not the case here.
 
 == Termination proof
-
-This is done with well-founded recursion. We would like to argue that the rightmost argument of `euc` strictly decreases with each call, and thus it must always reach zero.
+We would like to show that the recursive calls of euc are performed on arguments whose size strictly decreases. Since each recursive call replaces b with a mod b, and a mod b < b, repeated recursion must eventually terminate.
 
 Although we can intuitively see that $a mod b < b$, we will still need to modify the `modHelp` function to produce this proof alongside the result, so that we may use it in the well-founded implementation to justify making the recursive call.
 
@@ -180,7 +179,7 @@ eucHelper (MkEPair a (S k)) rec =
   in
   rec (MkEPair (S k) nextRight) isLess
 ```
-If the second argument is zero, there is no need to invoke the "recursive oracle," and we simply return `a`, as usual. If it is instead nonzero i.e. a successor of some number `S k`, we compute `a mod (S k)` to obtain the remainder and a proof that the remainder is less than the modulus, unpacked as `nextRight` and `isLess` respectively. With this proof, we can then call the function recursively with the next argument pair, `(S k), nextRight`.
+If the second argument is zero, there is no need to invoke the "recursive oracle," and we simply return `a`, as usual. Otherwise, the second argument must be a successor `S k`. We then compute `a mod (S k)`, obtaining both the remainder and a proof that the remainder is smaller than the modulus. These are unpacked as `nextRight` and `isLess` respectively. With this proof, we can then call the function recursively with the next argument pair, `(S k), nextRight`.
 
 Finally, we can use the helper along with `sizeRec` to get a total `euc` function:
 ```
@@ -189,6 +188,5 @@ euc : Nat -> Nat -> Nat
 euc a b = sizeRec (eucHelper) (MkEPair a b)
 ```
 
-
-
-
+== Verifying arithmetic properties of the `mod` function
+To work on the remaining two theorems, we will need to prove that our `mod` function not only produces a remainder `r` which is properly smaller than the modulus, but also a quotient `q` such that `a = b*q+r`, where `a` and `b` are the dividend and modulus respectively.
