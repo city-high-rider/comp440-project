@@ -189,4 +189,39 @@ euc a b = sizeRec (eucHelper) (MkEPair a b)
 ```
 
 == Verifying arithmetic properties of the `mod` function
-To work on the remaining two theorems, we will need to prove that our `mod` function not only produces a remainder `r` which is properly smaller than the modulus, but also a quotient `q` such that `a = b*q+r`, where `a` and `b` are the dividend and modulus respectively.
+To work on the remaining two theorems, we will need to prove that our `mod` function not only produces a remainder `r` which is properly smaller than the modulus, but also a quotient `q` such that `a = b*q+r`, where `a` and `b` are the dividend and modulus respectively. Here is the updated function:
+
+```idris
+public export total
+modHelp :
+  (q : Nat) ->
+  (r : Nat) ->
+  (remaining : Nat) ->
+  (b : Nat) ->
+  IsSucc b ->
+  LT r b ->
+  (q' : Nat ** r' : Nat ** ( LT r' b, q' * b + r' = q * b + r + remaining))
+modHelp q r 0 b bnz rltb = (q ** r ** (rltb, rewrite (plusZeroRightNeutral (plus (mult q b) r)) in Refl))
+modHelp q r (S k) 0 bnz rltb = absurd bnz
+modHelp q r (S k) (S j) bnz rltb =
+  case decEq r j of
+       (Yes Refl) =>
+          let
+            (qrec ** rrec ** (rrltb, prf)) = modHelp (S q) 0 k (S j) bnz (LTESucc LTEZero)
+          in
+          (qrec ** rrec ** (rrltb,
+          rewrite prf in
+          rewrite plusZeroRightNeutral (plus r (mult q (S r))) in
+          rewrite plusSuccRightSucc (plus r (mult q (S r))) k in
+          rewrite plusCommutative r (mult q (S r)) in Refl))
+       (No contra) =>
+          let
+            nextPrf = lteStrengthen rltb (neqBump contra)
+            (qrec ** rrec ** (rrltb, prf)) = modHelp q (S r) k (S j) bnz nextPrf
+          in
+          (qrec ** rrec ** (rrltb,
+          rewrite prf in
+          rewrite sym (plusSuccRightSucc (mult q (S j)) r) in
+          rewrite plusSuccRightSucc (plus (mult q (S j)) r) k in Refl))
+```
+In this iteration, we have added a parameter `q : Nat` to represent the current quotient. The function behaves in the same way as before, except every time the remainder rolls back to zero, we increment the current quotient. Alongside the `r < b` proof we used to justify termination, we have added an additional proof that `q' * b + r' = q * b + r + remaining`. It states that the final quotient `q'` multiplied by the modulus `b` plus the final remainder `r'` is equal to the initial quotient `q` times the modulus, plus the initial remainder and dividend `remaining`. This is convenient, because this helper function is invoked by `mod`, which will initialise the accumulated quotient `q` and remainder `r` to zero, as well as the dividend to `a`. Thus, substituting these into the return type yields `q' * b + r' = 0*b+0+a`, which simplifies to `q' * b + r' = a`, exactly the statement we wanted. The proof itself is provided easily in the base case, then propagated up and augmented through the recursive calls. This is acomplished with algebraic `rewrite` rules, which, while being somewhat fun to write, are not very interesting to discuss.
