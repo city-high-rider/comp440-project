@@ -73,3 +73,39 @@ $
   k*(m-q*n) &= r
 $
 Thus, $k$ divides $r$, which denotes $a mod b$. Knowing $k$ divides $b$ and $k$ divides $a mod b$, we may apply the induction hypothesis to conclude that $k$ divides $"euc"(b, a mod b)$ and thus $"euc"(a, b)$. $qed$
+
+= The Idris2 proof
+
+== Unverified implementation
+```idris
+public export total
+modHelp : Nat -> Nat -> Nat -> (b : Nat) -> IsSucc b -> Nat
+modHelp k rem a 0 x = absurd x
+modHelp k rem 0 (S j) x = rem
+modHelp k rem (S i) (S j) x =
+  if rem == j
+     then modHelp (S k) Z i (S j) ItIsSucc 
+     else modHelp k (S rem) i (S j) ItIsSucc
+
+public export total
+mod : Nat -> (b : Nat) -> IsSucc b -> Nat
+mod = modHelp 0 0
+
+public export partial
+euc : Nat -> Nat -> Nat
+euc a 0 = a
+euc a (S j) = euc (S j) (mod a (S j) ItIsSucc)
+```
+This is a functional, but unverified implementation of the modulo function and the euclidean algorithm in Idris. The majority of the code is defining `mod` and `modHelp`. The `modHelp` function computes the remainder by tracking it in one of its arguments. Then, on each recursive call, `a` is decremented, and the remainder is incremented unless it is one less than `b`, in which case it is reset to zero. This process continues until `a` is empty, at which point the remainder is returned. We also require `b` to be nonzero, because taking a modulo of zero is not well defined.  
+
+`modHelp` is then wrapped in `mod` to provide a nicer interface without the quotient and remainder accumulator arguments. With this, the euclidean algorithm can be defined as usual, with the addition of a non-zero proof being passed to the mod function.
+
+The first thing we will verify is termination, as the totality checker cannot verify that the current implementation terminates. This is because it verifies totality by checking that the arguments passed to each recursive call are an exact *syntactic* subterm of the current arguments, which is not the case here.
+
+== Termination proof
+
+This is done with well-founded recursion. We would like to argue that the rightmost argument strictly decreases with each call, and thus it must always reach zero.
+
+Although we can intuitively see that $a mod b < b$, we will still need to modify the `modHelp` function to produce this proof alongside the result, so that we may use it in the well-founded implementation to justify making the recursive call.
+
+
