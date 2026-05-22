@@ -108,4 +108,48 @@ This is done with well-founded recursion. We would like to argue that the rightm
 
 Although we can intuitively see that $a mod b < b$, we will still need to modify the `modHelp` function to produce this proof alongside the result, so that we may use it in the well-founded implementation to justify making the recursive call.
 
+```idris
+public export total
+neqBump : Not (a = b) -> Not (S a = S b)
+neqBump f Refl = f Refl
+
+public export total
+neqUnbump : Not (S a = S b) -> Not (a = b)
+neqUnbump f Refl = f Refl
+
+public export total
+lteStrengthen : {a, b : _} -> LTE a b -> Not (a = b) -> LT a b
+lteStrengthen {a = 0} {b = 0} LTEZero f = absurd (f Refl)
+lteStrengthen {a = 0} {b = (S k)} LTEZero f = LTESucc LTEZero
+lteStrengthen {a = (S left)} {b = (S right)} (LTESucc x) f = 
+  let
+    fRec = neqUnbump f
+  in
+  LTESucc (lteStrengthen x fRec)
+
+public export total
+modHelp : (r : Nat) -> Nat -> (b : Nat) -> IsSucc b -> (LT r b) -> (rem : Nat ** LT rem b)
+modHelp r 0 b bnz rltb = (r ** rltb)
+modHelp r (S k) 0 bnz rltb = absurd bnz
+modHelp r (S k) (S j) bnz rltb =
+  case decEq r j of
+    (Yes prf) => modHelp 0 k (S j) bnz (LTESucc LTEZero)
+    (No contra) =>
+      let
+        cbump = neqBump contra
+        rltbPrime = lteStrengthen rltb cbump
+      in
+      modHelp (S r) k (S j) bnz rltbPrime
+  
+
+public export total
+mod : Nat -> (b : Nat) -> IsSucc b -> (rem : Nat ** LT rem b)
+mod a 0 bnz = absurd bnz
+mod a (S k) bnz = modHelp 0 a (S k) bnz (LTESucc LTEZero)
+```
+
+In the previous implementation, we repeatedly decremented the dividend and incremented the remainder, resetting the remainder to zero if it became equal to the modulus. Mechancially, this implementation does the same thing, but it also carries a proof that the current remainder is strictly less than the modulus, augmenting it with each recursive call.
+
+Recall that the modulus is non-zero, that is, it is the successor of some number `S(j)`. Thus, in the case where we reset the remainder back to zero, it is easy to construct a proof that `Z < S(j)`. On the other hand, incrementing the remainder requires more steps to justify. Firstly, we have the current proof in scope: `r < (S j)`, which desugars to `r <= j`. We also have access to a proof that `r != j`. We may combine `r <= j` and `r != j` to conclude that `r < j`, and consequently `S r < S j`, thus verifying that the incremented remainder is still strictly smaller than the modulus.
+
 
