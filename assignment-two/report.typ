@@ -225,3 +225,82 @@ modHelp q r (S k) (S j) bnz rltb =
           rewrite plusSuccRightSucc (plus (mult q (S j)) r) k in Refl))
 ```
 In this iteration, we have added a parameter `q : Nat` to represent the current quotient. The function behaves in the same way as before, except every time the remainder rolls back to zero, we increment the current quotient. Alongside the `r < b` proof we used to justify termination, we have added an additional proof that `q' * b + r' = q * b + r + remaining`. It states that the final quotient `q'` multiplied by the modulus `b` plus the final remainder `r'` is equal to the initial quotient `q` times the modulus, plus the initial remainder and dividend `remaining`. This is convenient, because this helper function is invoked by `mod`, which will initialise the accumulated quotient `q` and remainder `r` to zero, as well as the dividend to `a`. Thus, substituting these into the return type yields `q' * b + r' = 0*b+0+a`, which simplifies to `q' * b + r' = a`, exactly the statement we wanted. The proof itself is provided easily in the base case, then propagated up and augmented through the recursive calls. This is acomplished with algebraic `rewrite` rules, which, while being somewhat fun to write, are not very interesting to discuss.
+
+Finally, the new `modHelp` function may be wrapped by `mod`, providing a nicer interface:
+```idris
+public export total
+mod : (a : Nat) -> (b : Nat) -> IsSucc b -> (q : Nat ** rem : Nat ** (LT rem b, a=q*b+rem))
+mod a 0 bnz = absurd bnz
+mod a (S k) bnz =
+  let
+    (q ** r ** (rltb, prf)) = modHelp 0 0 a (S k) bnz (LTESucc LTEZero)
+  in
+  (q ** r ** (rltb, sym prf))
+```
+
+== Theorem 1 proof
+Now we can show that `euc a b` divides both `a` and `b`. On top of the arithmetic proof, there are also necessary structural changes. First, we must define divisibility:
+```
+Divides : Nat -> Nat -> Type
+Divides a b = (k : Nat ** b = k * a)
+```
+Here we define _"a divides b"_ to mean that there exists some `k` such that `b = a*k`. In order to construct a proof of divisibility, we will need to explicitly provide the witness `k`. Additionally, to tidy up the type signatures, we will define a helper type which encodes the properties we wish to prove about the Euclidean algorithm:
+```
+public export total
+EucProp : EucArgPair -> Type
+EucProp (MkEPair l r) = (d : Nat ** (Divides d l, Divides d r))
+```
+For now, we have limited it to this theorem. The above definition can be read as "The proposition `EucProp` holds for a given `EucArgPair` if there exists a `d` which divides the left (`l`) and right (`r`) arguments." However, this significantly changes the type signature of `euc`: now instead of returning a number, it has to return a value of a dependent type indexed by its inputs:
+```
+euc : (a : Nat) -> (b : Nat) -> (c : Nat ** (Divides c a, Divides c b))
+```
+This means that we can no longer use `sizeRec`. Instead, we must move to `sizeInd`, which is a similar, but more powerful function:
+```
+sizeInd : Sized a =>
+  {P : a -> Type} ->
+  ((x : a) -> ((y : a) -> Smaller y x -> P y) -> P x) ->
+  (z : a) -> P z
+```
+This is much the same signature as `sizeRec`, but with the addition of a new parameter `P : a -> Type`, which is a dependent type indexed over values of our return type `a`. Another way of looking at this is that `P` is a _proposition_ which declares something about `a`s. In this way, `sizeInd` can be seen as a proof by induction, where `P` is the statement we aim to prove, the "recursive oracle" is the induction hypothesis, and the helper function is the actual proof body. Once we partially apply this to `sizeInd`, the resulting function has type `(z : a) -> P z`, which encodes that `P` holds for any `z` in `a`.
+
+```
+public export total
+divLem : {a,b,q,r,d : Nat} -> a=q*b+r -> Divides d b -> Divides d r -> Divides d a
+divLem prf (k1 ** p1) (k2 ** p2) =
+  rewrite prf in
+  rewrite p1 in
+  rewrite p2 in
+  rewrite (multAssociative q k1 d) in
+  rewrite sym (multDistributesOverPlusLeft (q*k1) k2 d) in
+  (plus (mult q k1) k2 ** Refl)
+
+public export total
+data EucArgPair = MkEPair Nat Nat
+
+Sized EucArgPair where
+  size (MkEPair a b) = b
+
+public export total
+EucProp : EucArgPair -> Type
+EucProp (MkEPair l r) = (d : Nat ** (Divides d l, Divides d r))
+
+public export total
+eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> EucProp y) -> EucProp x
+eucHelper (MkEPair a 0) _ =
+  (a **
+    ( (1 ** rewrite plusZeroRightNeutral a in Refl)
+    , (0 ** Refl)
+    ))
+eucHelper theseArgs@(MkEPair a (S p)) rec =
+  let
+    (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
+    (dRec ** (p1, p2)) = rec (MkEPair (S p) r) rltb
+    dda : Divides dRec a = divLem prfArith p1 p2
+  in
+  (dRec ** (dda, p1))
+
+public export total
+euc : (a : Nat) -> (b : Nat) -> (c : Nat ** (Divides c a, Divides c b))
+euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
+```
+
