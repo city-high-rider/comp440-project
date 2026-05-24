@@ -254,15 +254,66 @@ For now, we have limited it to this theorem. The above definition can be read as
 ```
 euc : (a : Nat) -> (b : Nat) -> (c : Nat ** (Divides c a, Divides c b))
 ```
-This means that we can no longer use `sizeRec`. Instead, we must move to `sizeInd`, which is a similar, but more powerful function:
+This is a problem, because `sizeRec` restricts us to a fixed codomain, but our new return type changes depending on the input pair. Therefore, we will move to the more general `sizeInd`, whose codomain may vary with the recursive argument:
 ```
 sizeInd : Sized a =>
   {P : a -> Type} ->
   ((x : a) -> ((y : a) -> Smaller y x -> P y) -> P x) ->
   (z : a) -> P z
 ```
-This is much the same signature as `sizeRec`, but with the addition of a new parameter `P : a -> Type`, which is a dependent type indexed over values of our return type `a`. Another way of looking at this is that `P` is a _proposition_ which declares something about `a`s. In this way, `sizeInd` can be seen as a proof by induction, where `P` is the statement we aim to prove, the "recursive oracle" is the induction hypothesis, and the helper function is the actual proof body. Once we partially apply this to `sizeInd`, the resulting function has type `(z : a) -> P z`, which encodes that `P` holds for any `z` in `a`.
+This is much the same signature as `sizeRec`, but with the addition of a new parameter `P : a -> Type`, which is a dependent type indexed over values of our input type `a`. Another way of looking at this is that `P` is a _proposition_ which declares something about `a`s. In this way, `sizeInd` can be seen as a proof by induction, where `P` is the statement we aim to prove, the "recursive oracle" is the induction hypothesis, and the helper function is the actual proof body. Once we supply the proposition and the helper function to `sizeInd`, the resulting function has type `(z : a) -> P z`, which encodes that `P` holds for every value `z` of type `a`.
 
+With this change, here are the relevant updated type signatures, as well as the amended body of `euc`:
+```
+public export total
+eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> EucProp y) -> EucProp x
+
+public export total
+euc : (a : Nat) -> (b : Nat) -> (c : Nat ** (Divides c a, Divides c b))
+euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
+```
+Having upgraded our recursive machinery, we may move to the algebraic part of the proof, starting with the base case. In the base case, the left argument is some natural number `a`, and the right argument is `0`. Substituting this into `EucProp`, we obtain:
+```
+d : Nat ** (Divides d a, Divides d 0)
+```
+In other words, when we reach the base case of the Euclidean algorithm, the final call will look like this: `euc a 0`. Here, we are obligated to provide a proof that there is a common divisor of `a` and `0`. Indeed, such a common divisor is `a` itself. Unfolding our definition even more, if we claim that `a` is the common divisor, we are now required to show that `a` divides itself and zero by providing actual quotients `k1` and `k2`:
+```
+a : Nat ** ((k1 : Nat ** a = k1 * a), (k2 : Nat ** 0 = k2 * a))
+```
+Here `k1` and `k2` are `1` and `0` respectively. This combined with an additional lemma about addition concludes our base case:
+```
+public export total
+eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> EucProp y) -> EucProp x
+eucHelper (MkEPair a 0) _ =
+  (a **
+    ( (1 ** rewrite plusZeroRightNeutral a in Refl)
+    , (0 ** Refl)
+    ))
+eucHelper (MkEPair a (S p)) rec = ?eucHelper_rhs_1
+```
+The recursive case proceeds in the same way as before: we compute `a mod b` to obtain a remainder `r` and a proof that `r < b`, then use this proof to make a recursive call through the "oracle." However, now `mod` also gives us a quotient `q` and an arithmetic proof `a = b*q+r`. Furthermore, we cannot just return the value produced by the recursive call anymore: since return types now depend on the function's inputs, and the recursive call had different arguments, it will have a different return type. Namely, we will be returned a proof that there exists a common divisor for the smaller `EucArgPair`:
+```
+d : Nat ** (Divides d (S p), Divides d r)
+-- where (S p) is the second argument in the euclidean algorithm
+```
+and required to produce a proof for the larger argument pair:
+```
+d : Nat ** (Divides d a, Divides d (S p))
+-- where (S p) is the second argument in the euclidean algorithm
+```
+Here is the relevant code:
+```
+eucHelper (MkEPair a (S p)) rec =
+  let
+    -- Call mod and unpack the results
+    (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
+
+    -- Make the recursive call and unpack its common divisor dRec alongside the divisibility proofs
+    (dRec ** (p1, p2)) = rec (MkEPair (S p) r) rltb
+  in
+  ?eucHelper_rhs_1
+```
+Looking at all the information we have in scope, we can see that the recursive call already gave us half of the proof, specifically that `dRec` divides `S p`. The only thing we need to show is that `dRec` also divides `a`. We can do this because the arithmetic proof returned by `mod` tells us that `a = (S p)*q + r`, and the proofs obtained from the recursive call tell us that both `S p` and `r` are divisible by `dRec`. Thus, through some algebraic manipulation, it should follow that `dRec` also divides `a`. We can do all of this algebraic manipulation in a separate lemma:
 ```
 public export total
 divLem : {a,b,q,r,d : Nat} -> a=q*b+r -> Divides d b -> Divides d r -> Divides d a
@@ -273,17 +324,17 @@ divLem prf (k1 ** p1) (k2 ** p2) =
   rewrite (multAssociative q k1 d) in
   rewrite sym (multDistributesOverPlusLeft (q*k1) k2 d) in
   (plus (mult q k1) k2 ** Refl)
-
-public export total
-data EucArgPair = MkEPair Nat Nat
-
-Sized EucArgPair where
-  size (MkEPair a b) = b
-
-public export total
-EucProp : EucArgPair -> Type
-EucProp (MkEPair l r) = (d : Nat ** (Divides d l, Divides d r))
-
+```
+Again, `rewrite` chains are not easy to read without interactive editing tools, but translated to paper, the above algebraic working would resemble this:
+$
+a &= q times b+r\
+a &= q times (k_1 times d) + r\
+a &= q times (k_1 times d) + (k_2 times d)\
+a &= (q times k_1) times d + (k_2 times d)\
+a &= (q times k_1 + k_2) times d
+$
+Thus $d$ divides $a$ where the quotient is $q times k_1 + k_2$. And finally, here is the complete `eucHelp` implementation:
+```
 public export total
 eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> EucProp y) -> EucProp x
 eucHelper (MkEPair a 0) _ =
@@ -291,16 +342,12 @@ eucHelper (MkEPair a 0) _ =
     ( (1 ** rewrite plusZeroRightNeutral a in Refl)
     , (0 ** Refl)
     ))
-eucHelper theseArgs@(MkEPair a (S p)) rec =
+eucHelper (MkEPair a (S p)) rec =
   let
     (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
     (dRec ** (p1, p2)) = rec (MkEPair (S p) r) rltb
     dda : Divides dRec a = divLem prfArith p1 p2
   in
   (dRec ** (dda, p1))
-
-public export total
-euc : (a : Nat) -> (b : Nat) -> (c : Nat ** (Divides c a, Divides c b))
-euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
 ```
 
