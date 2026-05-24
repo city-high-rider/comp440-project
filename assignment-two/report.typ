@@ -351,3 +351,211 @@ eucHelper (MkEPair a (S p)) rec =
   (dRec ** (dda, p1))
 ```
 
+== Theorem 2 proof
+Now we have shown that the result of the Euclidean algorithm is a common divisor of the two inputs, the only thing left to do is show that it is the _greatest_ common divisor. We did most of the hard work involving `sizeInd`, termination, arithmetic properties of `mod`, and the `EucProp` definitions in the previous parts. This proof will largely build on previous code, with the algebra containing most of the noteworthy details.
+
+First, we must change `EucProp` to also state that `d` is the greatest common divisor. However, instead of working with the `LTE` or `GTE` types, we will define this in terms of divisibility. In order for `d` to be the greatest common divisor, any other divisor must also divide it, which makes the proof substantially nicer.
+```
+public export total
+CommonDiv : Nat -> Nat -> Nat -> Type
+CommonDiv d a b = (Divides d a, Divides d b)
+
+public export total
+EucProp : EucArgPair -> Type
+EucProp (MkEPair l r) =
+  (d : Nat ** (CommonDiv d l r, (o : Nat) -> CommonDiv o l r -> Divides o d))
+```
+First, we move out the statement "`d` is a common divisor of `a` and `b`" to its own top level definition to make the other types more succinct. To encode this theorem formally, we introduced this to `EucProp` 
+```
+(o : Nat) -> CommonDiv o l r -> Divides o d
+```
+Which is a function that takes any natural number `o`, a proof that `o` is a common divisor of `l` and `r`, and constructs a proof that `o` is a common divisor of `d`. It can logically be thought of as a "for all" quantifier, because we can pass any `o` to this function. As before, we update the definition of `euc`:
+```
+euc : (a : Nat) -> (b : Nat) ->
+      (c : Nat ** (CommonDiv c a b, (o : Nat) -> CommonDiv o a b -> Divides o c))
+euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
+```
+Now, we ought to prove this for the base case, and add it to `eucHelper`. Specifically, we want to show that `a` is the greatest common divisor of `a` and `0`. Unrolling our definitions, the proof becomes straightforward: suppose we have another divisor `o`, which divides `a` and `0`. We are obligated to show that `o` divides `a`. This can be done just by repeating the premises:
+```
+public export total
+eucGcdBaseCase :
+  (a : Nat) ->
+  (o : Nat) ->
+  ( (k : Nat ** a = mult k o)
+  , (k : Nat ** 0 = mult k o)
+  ) ->
+  (k : Nat ** a = mult k o)
+eucGcdBaseCase a _ ((k1 ** p1), _) =
+  (k1 ** rewrite p1 in Refl)
+```
+and so that concludes the updated base case of `eucHelper`:
+```
+eucHelper (MkEPair a 0) _ =
+  (a ** 
+    (( (1 ** rewrite plusZeroRightNeutral a in Refl)
+     , (0 ** Refl))
+     , eucGcdBaseCase a)
+  )
+```
+The inductive case remains largely unchanged from before, but we get a new piece of information from the induction hypothesis: `p3`, which is a proof that `dRec` is the greatest common divisor of `S p` and `r`. However, we must also prove that `dRec` is the largest common divisor of `S p` and `a`, which we will mark with a hole for now.
+```
+eucHelper (MkEPair a (S p)) rec =
+  let
+    (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
+    (dRec ** ((p1, p2), p3)) = rec (MkEPair (S p) r) rltb
+    dda : Divides dRec a = divLem prfArith p1 p2
+  in
+  (dRec ** ((dda, p1), ?hole))
+```
+Let's algebraically reason about how we may implement the hole. Suppose we are given `o`, a divisor of `a` and `S p`. We still have the arithmetic proof from `mod`, so let us use that:
+$
+  a &= q times (S p) + r\
+  (k_1 times o) &= q times (S p) + r\
+  (k_1 times o) &= q times (k_2 times o) + r\
+  (k_1 times o) &= (q times k_2) times o + r\
+  (k_1 times o) - (q times k_2) times o &= r\
+  (k_1 - q times k_2) times o &= r
+$
+Thus, `o` divides `r`. We also know `o` divides `S p`, and recall that `p3` from the induction hypothesis tells us that any common divisor of `r` and `S p` also divides `dRec`! Thus, we can conclude our proof. But unfortunately, there is a problem in our algebra: we used subtraction to move everything with `o` to one side and factor it. Because we are working with natural numbers, all subtractions are floored at zero. Introducing subtraction would complicate our algebraic proof immensely, because we would need to reason about whether $q times k_2$ is bigger than $k_1$ or not.
+
+This brings us to the noteworthy algebraic trick of this section: we will need to find a way to get from
+$
+  (k_1 times o) = (q times k_2) times o + r
+$
+Or, equivalently, by merging $q$ and $k_2$ into the same constant:
+$
+  k_1 times o = k_2 times o + r
+$
+to a constructive proof that `o` divides `r` without using subtraction. We will do this by induction on $k_2$.
+
+*Base case:* $k_2 = 0$. Here we can substitute this into our premise:
+$
+  k_1 times o &= k_2 times o + r\
+  k_1 times o &= 0 times o + r\
+  k_1 times o &= 0 + r\
+  k_1 times o &= r\
+$
+And thus it follows that $o$ divides $r$ with $k_1$ as the quotient.
+
+*Inductive case*: Suppose $k_2$ is nonzero, i.e. $k_2 = n + 1$. Our inductive hypothesis is that we can go from a proof that 
+$
+  k_1 times o = n times o + r
+$
+to a proof that $o$ divides $r$. To continue, we examine whether or not $k_1$ is zero:
+
+*Case 1:* $k_1 = 0$. We substitute into our premise:
+$
+  0 times o &= (n + 1) times o + r\
+  0 &= (n + 1) times o + r\
+$
+Observe that here we have two natural numbers summing to zero. Therefore, they must both be zero:
+$
+  r &= 0\
+  "and"\
+  (n + 1) times o &= 0\
+$
+Therefore by transitivity of equality,
+$
+  r = (n + 1) times o
+$
+and we can conclude that $o$ divides $r$ with $n + 1$ as the quotient.
+
+*Case 2:* $k_2 != 0$, i.e. $k_2 = m + 1$. Here we again substitute and expand:
+$
+  (m+1) times o &= (n+1) times o + r\
+  o + (m times o) &= (o + n times o) + r\
+  o + (m times o) &= o + (n times o + r)\
+$
+Here, we can use the fact that for any $c$, $f(x) = c + x$ is injective to "cancel out" the $o$:
+$
+  m times o = n times o + r
+$
+Now we have reduced the equality to a form where we can apply the induction hypothesis and conclude that $o$ divides $r$.
+
+$qed$
+
+This is the core algebraic logic that we will need to encode in Idris. Once again, `rewrite` chains are not very human readable and writing them involves a gruelling session of repeatedly bouncing syntactic terms back and forth to the type checker, thus I will spare the details of actually encoding this algebra and present the full source code:
+```
+public export total
+sumZeroArgsZero : {a,b : Nat} -> a + b = 0 -> (a = 0, b = 0)
+sumZeroArgsZero {a = 0} {b = 0} Refl = (Refl, Refl)
+sumZeroArgsZero {a = 0} {b = (S k)} prf impossible
+sumZeroArgsZero {a = (S k)} {b = 0} prf impossible
+sumZeroArgsZero {a = (S k)} {b = (S j)} prf impossible
+
+public export total
+plusConstCancelLeft : (c : Nat) -> (l : Nat) -> (r : Nat) -> c+l = c+r -> l=r 
+plusConstCancelLeft 0 l l Refl = Refl
+plusConstCancelLeft (S k) l r prf =
+  plusConstCancelLeft k l r (injective prf)
+
+public export total
+divCancelLem : 
+  (k1 : Nat) ->
+  (k2 : Nat) ->
+  (d : Nat) ->
+  (r : Nat) ->
+  (k1 * d = k2 * d + r) ->
+  Divides d r
+divCancelLem k1 0 d r prf = (k1 ** rewrite prf in Refl)
+divCancelLem 0 (S n) d r prf =
+  let
+    (_, rzero) = sumZeroArgsZero (sym prf)
+  in
+  (0 ** rzero)
+divCancelLem (S m) (S n) d r prf =
+  let
+    prf' : (d+m*d = d+(n*d+r)) = rewrite (plusAssociative d (n*d) r) in prf
+  in
+  divCancelLem m n d r (rewrite (plusConstCancelLeft d (m*d) (n*d+r) prf') in Refl)
+
+public export total
+data EucArgPair = MkEPair Nat Nat
+
+Sized EucArgPair where
+  size (MkEPair a b) = b
+
+public export total
+CommonDiv : Nat -> Nat -> Nat -> Type
+CommonDiv d a b = (Divides d a, Divides d b)
+
+public export total
+EucProp : EucArgPair -> Type
+EucProp (MkEPair l r) =
+  (d : Nat ** (CommonDiv d l r, (o : Nat) -> CommonDiv o l r -> Divides o d))
+
+public export total
+eucGcdBaseCase : (a : Nat) -> (o : Nat) -> ((k : Nat ** a = mult k o), (k : Nat ** 0 = mult k o)) -> (k : Nat ** a = mult k o)
+eucGcdBaseCase a _ ((k1 ** p1), _) =
+  (k1 ** rewrite p1 in Refl)
+
+public export total
+eucHelper : (x : EucArgPair) -> ((y : EucArgPair) -> Smaller y x -> EucProp y) -> EucProp x
+eucHelper (MkEPair a 0) _ =
+  (a ** 
+    (( (1 ** rewrite plusZeroRightNeutral a in Refl)
+     , (0 ** Refl))
+     , eucGcdBaseCase a)
+  )
+eucHelper theseArgs@(MkEPair a (S p)) rec =
+  let
+    (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
+    (dRec ** ((p1, p2), p3)) = rec (MkEPair (S p) r) rltb
+    dda : Divides dRec a = divLem prfArith p1 p2
+  in
+  (dRec ** ((dda, p1), \o, ((k1 ** pr1), odivb@(k2 ** pr2)) =>
+    let
+      prf' : (k1*o = plus (mult q (S p)) r) = sym (rewrite sym prfArith in pr1)
+      prf'' : (k1*o = plus (mult q (k2*o)) r) = rewrite sym pr2 in prf'
+      prf''' : (k1*o = ((q*k2)*o)+r) = rewrite sym (multAssociative q k2 o) in prf''
+    in
+    p3 o (odivb, (divCancelLem k1 (q*k2) o r prf'''))
+  ))
+
+public export total
+euc : (a : Nat) -> (b : Nat) ->
+      (c : Nat ** (CommonDiv c a b, (o : Nat) -> CommonDiv o a b -> Divides o c))
+euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
+```
+
+And with that, we have constructively verified the Euclidean algorithm in Idris2.
