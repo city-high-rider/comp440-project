@@ -1,0 +1,8 @@
+cradle:
+  cabal:
+    - path: "./src"
+      component: "lib:euclid-gcd"
+    - path: "./app"
+      component: "exe:euclid-gcd"
+    - path: "./test"
+      component: "test:euclid-gcd-tests"

@@ -54,11 +54,30 @@ extra-doc-files:    CHANGELOG.md
 common warnings
     ghc-options: -Wall
 
-executable euclid-gcd
+library
     import:           warnings
-    main-is:          Main.hs
+    exposed-modules:  Euclid
+    hs-source-dirs:   src
     build-depends:
         base ^>=4.21.0.0,
         liquidhaskell
+    default-language: GHC2024
+
+executable euclid-gcd
+    import:           warnings
+    main-is:          Main.hs
     hs-source-dirs:   app
+    build-depends:
+        base ^>=4.21.0.0,
+        euclid-gcd
+    default-language: GHC2024
+
+test-suite euclid-gcd-tests
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+        base ^>=4.21.0.0,
+        QuickCheck,
+        euclid-gcd
     default-language: GHC2024
