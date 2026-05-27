@@ -564,13 +564,48 @@ And with that, we have constructively verified the Euclidean algorithm in Idris2
 
 Haskell has many things in common with Idris2: both are purely functional programming languages with similar syntax. Both languages aim to have a rich type system, and naturally, this leads to computational code in both languages looking similar.
 
-However, there are a few things that make Haskell unwieldy for encoding propositions in the type system and proving them constructively with functions, like we did in Idris. For starters, there is no totality checking built into Haskell, meaning that the `bottom` type, defined as follows:
+However, there are a few things that make Haskell unwieldy for encoding propositions in the type system and proving them constructively with functions, like we did in Idris. For starters, Haskell does not enforce totality, meaning that the `bottom` term, defined as follows:
 ```haskell
 bottom :: a
 bottom = bottom
 ```
-inhabits every lifted type. This is a problem, because in this method of verification, a type corresponds to a proposition, and a value of that type is a proof of the proposition. As such, `bottom` is valid evidence for any proposition, even those which should be false. On top of that, `bottom` is not the only construct with this behavior: `error` and `undefined` inhabit every type, and crash the program when they are evaluated. This makes Haskell's type system unsound, and moreover, this unsoundness is easy to run into. 
+inhabits every lifted type. As a result, Haskell cannot treat types as constructive proofs in the same way as Idris, because arbitrary types may be inhabited by nonterminating or partial terms. On top of that, `bottom` is not the only construct with this behavior: `error` and `undefined` inhabit every type, and crash the program when they are evaluated.
 
 The other issue is that Haskell does not have support for first-class types or dependent types like Idris does. The separation between types and values is very strict, and often requires you to manually "promote" values into types, and types into kinds. This requires using lots of language extensions (`GADTs`, `DataKinds`, `TypeFamilies`, `PolyKinds`, `TypeApplications` etc.) Using these features enables some lightweight dependent typing, such as length indexed vectors and operations on them, or encoding database schemas / API specs into the type system to enforce their correct use statically. However, as it stands, many of the features we used extensively in the Idris proof are not native to Haskell, and must be emulated with the aforementioned language extensions. Specifically, dependent pairs, rewrite chains, and injectivity proofs all become more cumbersome.
 
 With that being said, emulating our Idris proof in Haskell is still very likely possible. However, I will not do it because it is very awkward and time consuming while simultaneously not introducing anything new to write about. Instead, I will focus on two new tools which see much more use in the Haskell ecosystem: refinement types and property based testing.
+
+== Property based testing and QuickCheck
+Property based testing is not formal verification, but it is nonetheless a great tool for finding bugs. Property tests are typically much easier and faster to write than constructive proofs, and they can be defined outside of the module where the actual code you are testing is. This avoids a nasty consequence we saw in our Idris2 verification: at the start, we had a clear and concise implementation of the Euclidean algorithm, but in verifying it we introduced several helper lemmas and filled the core logic with dozens of lines of proof code. It also saves us from having to redefine library functions like `mod` in a simpler way just so we can verify them.
+
+The gist of property based testing is this:
+  1. Pick the function you want to test, and, in code, write down a property it should satisfy.
+  2. The tester will repeatedly generate inputs and check whether the property holds.
+  3. If an input is found for which the property is false, the tester will attempt to "shrink" the input as much as possible to find a minimal counterexample which breaks the property.
+
+Here is our Haskell implementation of the Euclidean algorithm:
+```haskell
+euc :: Int -> Int -> Int
+euc a 0 = a
+euc a b = euc b (a `mod` b)
+```
+and here is a test for the first theorem:
+```haskell
+prop_eucCommonDiv :: Int -> Int -> Bool
+prop_eucCommonDiv a b =
+  let
+    c = euc a b
+    cDivA = a `mod` c == 0
+    cDivB = b `mod` c == 0
+  in
+  cDivA && cDivB
+
+prop_eucLargestDiv :: Int -> Int -> Int -> Bool
+prop_eucLargestDiv a b o =
+  let
+    c = euc a b
+    
+
+main :: IO ()
+main = quickCheck prop_eucCommonDiv
+```
