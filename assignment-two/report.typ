@@ -31,7 +31,7 @@ $
 We have obtained a new representation of $a$ with a larger quotient, contradicting the assumption that we divided $a$ fully. $arrow.double.r arrow.double.l$
 
 == Theorem 2: termination
-$"euc"$ called with any two parameters such that the precondition holds will eventually terminate.
+$"euc"$ called with any two parameters will eventually terminate.
 
 === Proof
 Consider the second argument in the recursive case $"euc"(a,b) = "euc"(b, a mod b)$. By theorem 1, $a mod b < b$. Therefore, the second argument is monotonically decreasing. As it is a natural number, it will eventually reach zero, thus arriving at the base case and terminating the algorithm.
@@ -592,8 +592,11 @@ euc a b = euc b (a `rem` b)
 and here is a test for the first theorem:
 ```haskell
 divides :: Int -> Int -> Bool
-0 `divides` _ = True
+0 `divides` 0 = True
+_ `divides` 0 = True
+0 `divides` _ = False
 a `divides` b = b `rem` a == 0
+
 
 prop_eucCommonDiv :: Int -> Int -> Bool
 prop_eucCommonDiv a b =
@@ -662,10 +665,103 @@ The important thing here is that these tests took only a minute or two to set up
 And surprisingly, counterexamples to many non-trivial conjectures in number theory have been found with conceptually similar approaches. Examples inculde "Counterexample to Euler's Conjecture on Sums of Like Powers by L. J. Lander and T. R. Parkin" as well as recent computational work on instances of the sum of three cubes problem. More rigorous forms of computer assisted verification also exist in mathematics: the proof of the four color theorem reduced the problem to a very large but finite collection of cases, which were then exhaustively checked by a computer.
 
 == Refinement types and LiquidHaskell
-One property of the Haskell implementation that we are yet to test is termination. Unlike our other two properties, testing termination by simply running the program leads to a problem: how can we actually tell that the program is stuck in an infinite loop, and not just taking a long time to finish? In general, this is impossible. In practice, a single function having an execution time of several seconds on a modern computer is eyebrow raising and often indicates non-termination, but is not a proof. Furthermore, in some domains such as scientific computing, execution times are frequently measured in hours.
+One property of the Haskell implementation that we are yet to test is termination. Unlike our other two properties, testing termination by simply running the program leads to a problem: how can we actually tell that the program is stuck in an infinite loop, and not just taking a long time to finish? In general, this is not decidable. In practice, a single function having an unexpectedly long execution time is eyebrow-raising and often indicates non-termination, but is not a proof. 
 
-Thankfully, there is a technique which can formally verify properties of programs in a way that is less invasive and more automated than our constructive Idris proof. In LiquidHaskell, we annotate our functions with _refinement types_, which place logical constraints on ordinary Haskell types. It then combines the code, types, and propositions to produce a set of decidable verification conditions, i.e. predicates which are valid only if the program satisfies the specified properties. Finally, an SMT solver is used to determine whether or not the verification conditions are valid. If they are, the program is marked safe.
+Thankfully, there is a technique which can formally verify properties of programs in a way that is less invasive and more automated than our constructive Idris proof. In LiquidHaskell, we annotate our functions with _refinement types_, which place logical constraints on ordinary Haskell types. It then combines the code, types, and propositions to produce a set of verification conditions expressed in SMT-decidable logic. Finally, an SMT solver is used to check if all verification conditions are valid, and if they are, the program is accepted as satisfying the specified properties.
 
 This makes LiquidHaskell much more automatic than Idris and removes the need for the explicit construction and manipulation of proofs, which in turn means we do not need to actually modify the implementation to carry them. However, we will still need to provide annotations for LiquidHaskell, and potentially write some helper lemmas. The heavy automation also comes at the cost of less approachable error messages, as they are the direct output of the SMT solver.
 
+We can annotate `euc` like so:
+```
+{-@ euc :: a:Nat -> b:Nat -> Nat @-}
+euc :: Int -> Int -> Int
+euc a 0 = abs a
+euc a b = euc b (a `rem` b)
+```
+If we do this and recompile, then LiquidHaskell will produce the following error message:
+```
+**** LIQUID: UNSAFE ************************************************************
+src/Euclid.hs:14:15: error:
+    Liquid Type Mismatch
+    .
+    The inferred type
+      VV : {v : GHC.Types.Int | v == ?a
+                                && v >= 0}
+    .
+    is not a subtype of the required type
+      VV : {VV##712 : GHC.Types.Int | VV##712 < a##aHu}
+    .
+    in the context
+      a##aHu : {a##aHu : GHC.Types.Int | a##aHu >= 0}
+       
+      ?d : {?d : GHC.Prim.Int# | ?d == ?b
+                                 && ?d /= 0}
+       
+      ?c : {?c : GHC.Types.Int | ?c == ?a
+                                 && ?c == ?b
+                                 && ?c == GHC.Types.I# ?b
+                                 && ?c >= 0}
+       
+      ?a : {?a : GHC.Types.Int | ?a >= 0}
+       
+      ?b : GHC.Prim.Int#
+       
+      ?e : {?e : GHC.Types.Int | ?e == GHC.Internal.Real.rem a##aHu ?a
+                                 && ?e >= 0
+                                 && ?e < ?a}
+    Constraint id 5
+   |
+14 | euc a b = euc b (a `rem` b)
+   |  
+```
+By default, LiquidHaskell attempts to prove termination by showing that the first argument strictly decreases across recursive calls. Here that proof fails, because the recursive call swaps the arguments and the first argument is not actually guaranteed to be smaller. We can resolve this by adding an annotation to explicitly specify the second argument as the termination metric:
+```haskell
+{-@ euc :: a:Nat -> b:Nat -> Nat / [b] @-}
+euc :: Int -> Int -> Int
+euc a 0 = abs a
+euc a b = euc b (a `rem` b)
+```
+And now we get successful output:
+```
+**** LIQUID: SAFE (6 constraints checked) **************************************
+```
+This was substantially easier than verifying `rem` and refactoring the function to use well founded induction. While the Idris totality checker needs to see that an argument passed to a recursive call is an exact syntactic subterm of one of the current arguments, LiquidHaskell already knows some lemmas about built in functions including `rem a b < b`, and with this information the SMT solver can infer that the second argument is decreasing.
+
+That's as far as I was able to take LiquidHaskell. It may be possible to prove the other two theorems using it, but in my experience the SMT solver struggles to reason about modular arithmetic and unfold some functions, making this difficult. Instead, it is better suited to specifying constraints on values and tracking how those constraints propagate through the program, making it particularly useful for preventing issues such as division by zero or out of bounds indexing, rather than encoding large constructive algebraic proofs.
+
+= Comparison
+
+Here we've seen three different verification methods, each with their upsides and drawbacks. In Idris, we were able to verify all of the properties we wanted at the cost of a few hours of effort, reimplementing the `mod` function, and making the original code much harder to read. In Haskell, we weren't able to formally verify every property, but QuickCheck let us easily run a very large number of tests for the other two theorems. We were then able to prove termination with LiquidHaskell using just a small annotation. Combined, we were able to get a very comprehensive analysis of `euc` much faster and without modifying the original code or rewriting parts of the standard library.
+
+The effects of these methods on the execution time of the function are also worth briefly noting. The Idris implementation of `euc` is much slower than the Haskell one, mostly because it uses a deliberately simple `mod` implementation, does not erase proof terms, and has to construct several proof terms at each recursive call. Meanwhile, QuickCheck and LiquidHaskell are only invoked during compilation and testing, and thus do not affect runtime performance at all. I have observed runtimes of several seconds when calling the Idris implementation with two digit numbers, whereas QuickCheck is able to run `euc` hundreds of times in less than one second. This can be mitigated by using erasure and optimising `mod`, but this can make the proof more complicated to write and use in other programs, and is outside the scope of this report.
+
+Overall, my impression is that each tool has its own use-case: Idris is expressive and powerful, and gives you full freedom to natively merge programs and their proofs together. LiquidHaskell is good for verifying lightweight preconditions and postconditions automatically without complicating the codebase with dependent types. QuickCheck is lighter still, enabling the programmer to easily check their logic against a large number of inputs and edge cases. Rather than replacing one another, these tools offer different tradeoffs between automation, proof strength, implementation effort, and runtime performance.
+
+= For fun: inspecting the generated proof terms
+Earlier I mentioned that the Idris proof was constructive. That is, it actually passes around existential witnesses and evidence for propositions through the code. We can call `euc` at the REPL to see what they look like:
+```
+Main> :t euc 12 8
+euc 12 8 : (c : Nat **
+(((k : Nat ** 12 = mult k c), (k : Nat ** 8 = mult k c)),
+(o : Nat) -> ((k : Nat ** 12 = mult k o), (k : Nat ** 8 = mult k o)) -> (k : Nat ** c = mult k o)))
+```
+Here we can see the return type of `euc 12 8`. We are promised a divisor `c`, witnesses showing that `c` divides both 12 and 8, and finally a function proving that every other common divisor also divides `c`. If we tell the REPL to actually evaluate this expression:
+```
+Main> euc 12 8
+(4 **
+(((3 ** Refl), (2 ** Refl)),
+\o,
+lamc => let ((k1 ** pr1), (k2 ** pr2)) = lamc
+        in let prf' = sym (rewrite__impl _ _ pr1)
+           in let prf'' = rewrite__impl _ _ prf'
+              in let prf''' = rewrite__impl _ _ prf''
+                 in (\o,
+                      lamc => let ((k1 ** pr1), (k2 ** pr2)) = lamc
+                              in let prf' = sym (rewrite__impl _ _ pr1)
+                                 in let prf'' = rewrite__impl _ _ prf'
+                                    in let prf''' = rewrite__impl _ _ prf''
+                                       in eucGcdBaseCase 4 o (odivb, divCancelLem k1 (2 * k2) o 0 prf''')) o (odivb,
+                      divCancelLem k1 (1 * k2) o 4 prf''')))
+```
+We can see all of the aforementioned things. 4 is indeed a divisor of 12 and 8, because $12 = 3 times 4$ and $8 = 2 times 4$. We can also see the expanded lambda term implementing the “greatest common divisor” proof. The generated proof term is significantly less readable than the high level proof we wrote earlier, but it makes it clear that the verifier has indeed constructed concrete computational evidence for every proposition involved.
 
