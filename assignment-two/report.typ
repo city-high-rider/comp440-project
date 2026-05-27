@@ -587,25 +587,85 @@ Here is our Haskell implementation of the Euclidean algorithm:
 ```haskell
 euc :: Int -> Int -> Int
 euc a 0 = a
-euc a b = euc b (a `mod` b)
+euc a b = euc b (a `rem` b)
 ```
 and here is a test for the first theorem:
 ```haskell
+divides :: Int -> Int -> Bool
+0 `divides` _ = True
+a `divides` b = b `rem` a == 0
+
 prop_eucCommonDiv :: Int -> Int -> Bool
 prop_eucCommonDiv a b =
   let
     c = euc a b
-    cDivA = a `mod` c == 0
-    cDivB = b `mod` c == 0
   in
-  cDivA && cDivB
-
-prop_eucLargestDiv :: Int -> Int -> Int -> Bool
-prop_eucLargestDiv a b o =
-  let
-    c = euc a b
-    
+  (c `divides` a) && (c `divides` b)
 
 main :: IO ()
 main = quickCheck prop_eucCommonDiv
 ```
+Running these tests with verbose mode yields the following output:
+```
+Test suite euclid-gcd-tests: RUNNING...
+Running QuickCheck tests...
+Passed:  
+0
+0
+
+Passed: 
+0
+1
+
+Passed:  
+-2
+0
+
+Passed:  
+-2
+-1
+
+Passed:  
+3
+-4
+
+(rest of cases omitted)
+
++++ OK, passed 100 tests.
+Test suite euclid-gcd-tests: PASS
+```
+
+There you can see the process in action; the tester is going and invoking the code with each input pair, then checking that the property holds. Unlike Idris, I made this implementation use integers rather than natural numbers, and the `mod` function from the standard library so that these tests cover cases which our formal proof does not. If we add another test:
+```haskell
+-- we use the triple equals to provide richer debug information
+prop_eucGreatestDiv :: Int -> Int -> Property
+prop_eucGreatestDiv a b =
+  euc a b === gcd a b
+```
+(Yes, this is cheating a bit because we are using the known-good `gcd` from the standard library, but you can replace it with a simple brute-force implementation that iterates through the common divisors and finds the maximum)
+
+We can see that QuickCheck has found a very simple set of inputs which break our implementation:
+```
+*** Failed! Falsified (after 2 tests and 1 shrink):     
+0
+-1
+-1 /= 1
+```
+which we can quickly fix by taking the absolute value of `a` in the base case, after which all the tests pass:
+```haskell
+euc a 0 = abs a
+```
+And if 100 tests for each property aren't convincing enough, we can always tell QuickCheck to run more cases. In principle, because machine integers are finite, verifying every possible input pair (of which there are $2^128$ on a 64-bit computer) would establish correctness for that specific implementation and integer representation. However, this would be computationally infeasible, and unlike the Idris proof, it would provide little insight into _why_ the algorithm is correct.
+
+The important thing here is that these tests took only a minute or two to set up, compared to the three or four hours I spent writing the formal proof. Despite this, we still managed to find a bug involving negative inputs, all without reinventing existing functions or obfuscating the original implementation in rewrite chains, extra proof carrying arguments, lemmas, etc.
+
+And surprisingly, counterexamples to many non-trivial conjectures in number theory have been found with conceptually similar approaches. Examples inculde "Counterexample to Euler's Conjecture on Sums of Like Powers by L. J. Lander and T. R. Parkin" as well as recent computational work on instances of the sum of three cubes problem. More rigorous forms of computer assisted verification also exist in mathematics: the proof of the four color theorem reduced the problem to a very large but finite collection of cases, which were then exhaustively checked by a computer.
+
+== Refinement types and LiquidHaskell
+One property of the Haskell implementation that we are yet to test is termination. Unlike our other two properties, testing termination by simply running the program leads to a problem: how can we actually tell that the program is stuck in an infinite loop, and not just taking a long time to finish? In general, this is impossible. In practice, a single function having an execution time of several seconds on a modern computer is eyebrow raising and often indicates non-termination, but is not a proof. Furthermore, in some domains such as scientific computing, execution times are frequently measured in hours.
+
+Thankfully, there is a technique which can formally verify properties of programs in a way that is less invasive and more automated than our constructive Idris proof. In LiquidHaskell, we annotate our functions with _refinement types_, which place logical constraints on ordinary Haskell types. It then combines the code, types, and propositions to produce a set of decidable verification conditions, i.e. predicates which are valid only if the program satisfies the specified properties. Finally, an SMT solver is used to determine whether or not the verification conditions are valid. If they are, the program is marked safe.
+
+This makes LiquidHaskell much more automatic than Idris and removes the need for the explicit construction and manipulation of proofs, which in turn means we do not need to actually modify the implementation to carry them. However, we will still need to provide annotations for LiquidHaskell, and potentially write some helper lemmas. The heavy automation also comes at the cost of less approachable error messages, as they are the direct output of the SMT solver.
+
+
