@@ -537,7 +537,7 @@ eucHelper (MkEPair a 0) _ =
      , (0 ** Refl))
      , eucGcdBaseCase a)
   )
-eucHelper theseArgs@(MkEPair a (S p)) rec =
+eucHelper (MkEPair a (S p)) rec =
   let
     (q ** r ** (rltb, prfArith)) = mod a (S p) ItIsSucc
     (dRec ** ((p1, p2), p3)) = rec (MkEPair (S p) r) rltb
@@ -559,3 +559,18 @@ euc a b = sizeInd {P = EucProp} (eucHelper) (MkEPair a b)
 ```
 
 And with that, we have constructively verified the Euclidean algorithm in Idris2.
+
+= Verification in Haskell
+
+Haskell has many things in common with Idris2: both are purely functional programming languages with similar syntax. Both languages aim to have a rich type system, and naturally, this leads to computational code in both languages looking similar.
+
+However, there are a few things that make Haskell unwieldy for encoding propositions in the type system and proving them constructively with functions, like we did in Idris. For starters, there is no totality checking built into Haskell, meaning that the `bottom` type, defined as follows:
+```haskell
+bottom :: a
+bottom = bottom
+```
+inhabits every lifted type. This is a problem, because in this method of verification, a type corresponds to a proposition, and a value of that type is a proof of the proposition. As such, `bottom` is valid evidence for any proposition, even those which should be false. On top of that, `bottom` is not the only construct with this behavior: `error` and `undefined` inhabit every type, and crash the program when they are evaluated. This makes Haskell's type system unsound, and moreover, this unsoundness is easy to run into. 
+
+The other issue is that Haskell does not have support for first-class types or dependent types like Idris does. The separation between types and values is very strict, and often requires you to manually "promote" values into types, and types into kinds. This requires using lots of language extensions (`GADTs`, `DataKinds`, `TypeFamilies`, `PolyKinds`, `TypeApplications` etc.) Using these features enables some lightweight dependent typing, such as length indexed vectors and operations on them, or encoding database schemas / API specs into the type system to enforce their correct use statically. However, as it stands, many of the features we used extensively in the Idris proof are not native to Haskell, and must be emulated with the aforementioned language extensions. Specifically, dependent pairs, rewrite chains, and injectivity proofs all become more cumbersome.
+
+With that being said, emulating our Idris proof in Haskell is still very likely possible. However, I will not do it because it is very awkward and time consuming while simultaneously not introducing anything new to write about. Instead, I will focus on two new tools which see much more use in the Haskell ecosystem: refinement types and property based testing.
