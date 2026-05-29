@@ -100,6 +100,8 @@ This is a functional, but unverified implementation of the modulo function and t
 
 `modHelp` is then wrapped in `mod` to provide a nicer interface without the quotient and remainder accumulator arguments. With this, the euclidean algorithm can be defined as usual, with the addition of a non-zero proof being passed to the mod function.
 
+We deliberately redefine our own `mod` here so that it is easier to verify and prove properties about. Furthermore, the following proofs will require changing the implementation. There is a `mod` function available in `Data.Nat`, but no associated lemmas.
+
 The first thing we will verify is termination, as the totality checker cannot verify that the current implementation terminates. This is because it verifies totality by checking that the arguments passed to each recursive call are an exact *syntactic* subterm of the current arguments, which is not the case here.
 
 == Termination proof
@@ -638,7 +640,7 @@ Passed:
 Test suite euclid-gcd-tests: PASS
 ```
 
-There you can see the process in action; the tester is going and invoking the code with each input pair, then checking that the property holds. Unlike Idris, I made this implementation use integers rather than natural numbers, and the `mod` function from the standard library so that these tests cover cases which our formal proof does not. If we add another test:
+There you can see the process in action; the tester is going and invoking the code with each input pair, then checking that the property holds. Unlike Idris, I made this implementation use integers rather than natural numbers, and the `rem` function from the standard library so that these tests cover cases which our formal proof does not. If we add another test:
 ```haskell
 -- we use the triple equals to provide richer debug information
 prop_eucGreatestDiv :: Int -> Int -> Property
