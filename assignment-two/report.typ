@@ -52,8 +52,8 @@ $
 $
 Then, because $k$ divides $r$ and $b$:
 $
-  a &= q*(n*k)+(m*k)\
-  a &= k*(q*n+m)
+  a &= q*(p*k)+(m*k)\
+  a &= k*(q*p+m)
 $
 Thus $k$ divides $a$. $qed$
 
@@ -68,9 +68,9 @@ Suppose $n = 0$. Then, only the base case was reached. Thus, $b = 0$ and $"euc"(
 Suppose this property holds for $n$ recursive calls, and consider a run of the algorithm with one more recursive call. The additional call will be of the shape $"euc"(a,b) = "euc"(b, a mod b)$. Suppose there is a $k$ which divides $a$ and $b$. Consider $a mod b$ and denote the quotient and remainder as $q$ and $r$ respectively. Because of this:
 $
   a &= q*b+r\
-  (m*k) &= (q*n*k)+r\
-  (m*k)-(q*n*k) &= r\
-  k*(m-q*n) &= r
+  (m*k) &= (q*p*k)+r\
+  (m*k)-(q*p*k) &= r\
+  k*(m-q*p) &= r
 $
 Thus, $k$ divides $r$, which denotes $a mod b$. Knowing $k$ divides $b$ and $k$ divides $a mod b$, we may apply the induction hypothesis to conclude that $k$ divides $"euc"(b, a mod b)$ and thus $"euc"(a, b)$. $qed$
 
