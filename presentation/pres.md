@@ -1,0 +1,253 @@
+---
+marp: true
+theme: gaia
+paginate: true
+---
+## From Static Typing to Theorem Proving
+**ENGR340 Presentation**
+
+---
+### Contents
+- Describing the shape of data
+- Well-typed programs still go wrong
+- Encoding invariants in the type system
+- Code specifications as types
+- Vector `reverse` example and commutativity proof
+- Types as propositions, values as evidence, and programs as proofs
+- Tactic-based theorem proving
+- Property based testing and refinement types
+
+---
+
+**The low level view**
+How should the computer interpret binary data?
+What CPU instructions should it use?
+
+`01001000 01100101 01111001 00000000`
+
+1. Null-terminated ASCII string: "Hey"
+2. Float: 234980.0
+3. Signed 32-bit integer: 1214609664
+4. `struct Player*`: A memory address which points to six integers and ten characters, all stored contiguously. 
+
+<!--
+Eventually, everything must be encoded as binary, and we need to indicate whether the bits store a string, number, or pointer.
+-->
+---
+
+**Primitives**
+Bits grouped into standard, simple shapes
+- `i32`: -2,147,483,648 <-> 2,147,483,647
+- `u8`: 0 <-> 255
+- `bool`: 0 <-> 1
+```c
+enum Color {Red, Green, Blue};
+enum Shape {Square, Circle};
+
+enum Color c = Red;
+enum Shape s = Square;
+int res = (c == s); // ???
+printf("%i", res);
+```
+
+<!--
+There's still some issues:
+- Ranges are huge or tiny
+- You have to remember the semantic meaning of things: E.g. `00000000` indicates the absence of data due to an error
+- Compiler doesn't care and will gladly let you add, dereference, or cast the raw data in nonsensical ways
+- Switch/case exhaustiveness
+- Some values are technically valid but semantically nonsensical
+- "Trust me, go to this memory location, and you will find exactly 6 ints and 10 chars." If you lie, or if that data got wiped, the program violently crashes.
+- Developer has to worry about serialization when writing code
+- can represent invalid states
+-->
+---
+```c
+enum Status { InFlight, Success, Failure };
+typedef struct {
+    enum Status status;
+    union {
+        int errorCode;
+        char data[1024];
+    }; 
+} NetworkRequest;
+```
+Not every value is semantically valid
+```c
+NetworkRequest req = {
+  .status = (enum Status) 100,
+  .data = "what"
+};
+```
+---
+...And, with this in mind, we have to write code defensively to prevent problems such as:
+ - status and the union going out of sync
+```c
+NetworkRequest *req = getValidRequest();
+//...
+if (req->status == Failure) {
+  strcpy(req->data, "Fixed it!");
+}
+//...
+return req;
+```
+---
+<style scoped>
+pre {
+   font-size: 70%;
+}
+</style>
+ - status being set to some int which is not in the enum
+```c
+NetworkRequest req;
+req.status = (enum Status) 100;
+strcpy(req.data, "Happy debugging ;)");
+```
+ - non-exhaustive pattern matching
+```c
+switch (req.status) {
+  case InFlight:
+    // ...
+    break;
+  case Success:
+    // ...
+    break;
+  case Failure:
+    // ...
+    break;
+  default:
+    // What goes here??
+    break;
+}
+```
+---
+ - something writing to the wrong variant and corrupting or leaking the union
+```c
+// start here...
+req.status = Success;
+strcpy(req.data, "...Some very sensitive secret data!");
+// ...
+// Something later on goes wrong, so we flip to failure
+req.status = Failure;
+// Overwrites only the first 4 bytes of 'data'
+// -1 == 0xFFFFFFFF
+req.errorCode = -1;
+// ...
+// System tries to log something
+printf("Raw buffer preview: %s\n", &req.data);
+// Output: "????ome very sensitive secret data!" 
+// The semantic intent was to destroy/overwrite the success state, but the data leaked.
+```
+---
+
+You can alleviate this with clever use of macros, opaque pointers, constructor functions, or good code hygiene...
+
+some public `network_request.h`:
+```c
+// Opaque type definition
+typedef struct NetworkRequest NetworkRequest;
+
+NetworkRequest* create_success(const char* data);
+NetworkRequest* create_failure(int error_code);
+void free_request(NetworkRequest* req);
+
+// Forced pattern matching via a callback handler
+void match_request(const NetworkRequest* req,
+                   void (*on_success)(const char*),
+                   void (*on_failure)(int));
+```
+---
+...but you're never guaranteed to be safe
+```c
+// External code bypassing the API boundary completely
+void maliciousOrLazyCode(NetworkRequest* publicReq) {
+    struct ILookedAtTheInternalLayout { int status; char data[1024]; };
+    struct ILookedAtTheInternalLayout* evil =
+      (struct ILookedAtTheInternalLayout*)publicReq;
+    evil->status = 999;
+}
+```
+---
+<!-- We stopped configuring memory layouts for the CPU, and started mapping mental models for the human brain -->
+**Types are sets of values** (Flavor 1/2: ADTs)
+We are given the tools to describe what is in these sets:
+
+```haskell
+-- Aliasing (giving a new name to a set)
+type Name = String
+
+-- Wrapping (making a distinct copy of a set, the type-checker will treat them as different things)
+newtype HeightCm = FromInt {toInt :: Int}
+
+-- Pure sum types (This OR That - An enum)
+data EyeColor = Blue | Green | Brown
+
+-- Pure product types (This AND That - A struct/record)
+data Person = MkPerson Name EyeColor HeightCm
+
+-- Mixed/Tagged sum types (A variant that carries data)
+data User = Anonymous | Guest Name | Registered Person
+
+-- Recursion
+data JsonValue = JNull | JBool Bool | JNum Double | JArray [JsonValue] | JObject (Map String JsonValue)
+
+-- Parametric polymorphism (you can replace 'a' with any type)
+-- Note: "Maybe" is a type constructor, not a type. In order to make it a type, you have to specify the 'a'.
+data Maybe a = Just a | Nothing
+```
+---
+Flavor 2/2: Enterprise edition
+You can do mostly the same thing using interfaces and classes, with some caveats:
+```java
+public sealed interface User permits Anonymous, Guest, Registered {}
+public record Anonymous() implements User {}
+public record Guest(String name) implements User {}
+public record Registered(String name, Color eyeColor, LengthCM height) implements User {}
+
+public sealed interface ConsList<T> permits Cons, Nil {}
+public record Nil<T>() implements ConsList<T> {}
+public record Cons<T>(T value, ConsList<T> rest) implements ConsList<T> {}
+```
+---
+We can now specify the *shape* of our data very precisely. Unfortunately, this won't save us from everything.
+```haskell
+-- data List a = [] | a : List a
+
+reverse :: List a -> List a
+reverse [] = []
+reverse (first:rest) = reverse rest ++ [first]
+```
+The recursion converges towards a base case. Reversing a list twice returns the original list...
+
+---
+... until it doesn't
+```haskell
+main = print . take 10 . reverse . reverse $ [1..]
+```
+(This type checks, but loops forever, or until you run out of stack space)
+
+---
+Programs can also fail by throwing errors or not covering all values
+```haskell
+head :: List a -> a
+head (first:_) = first
+head [] = undefined
+
+index :: List a -> Int -> a
+index [] _ = undefined
+index (first:_) 0 = first
+index (_:rest) n = if n > 0 then index rest (n - 1) else undefined
+```
+
+---
+**What's the difference?**
+**TODO: Move this slide!!**
+Classes and interfaces can mimic ADTs, but they are fundamentally different.
+An ADT is a potentially *infinite* set of *finite* values. Each value must be inductively constructed up from some base case, so we know all the possible shapes of values and can rip the type open with pattern matching to work with it. This also lets us provide totality guarantees for recursive calls on syntactic subterms. These correspond to algebras.
+OO modelling corresponds to a co-algebra, and can support truly infinite values. We do not care about construction, only about what we can *do* with values. This is more flexible, but many mainstream OO languages do not aim to guarantee soundness.
+
+For algebras, we would need to use positivity checking to make sure each value is truly finite, and for co-algebras we need to use prooductivity checking to make sure that the program doesn't randomly loop forever. 
+
+
+
+
