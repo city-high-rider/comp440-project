@@ -291,6 +291,102 @@ placeOrder = do
       doSomething qtyInt
 ```
 ---
+Something interesting has happened:
+
+We intially just wanted to model a set and enforce that data was well-formed at compile time. But now we are seeing that the type system can also enforce some lightweight "contracts"
+
+Can we / should we push further in this direction?
+
+---
+**Another look at our ADTs:**
+```haskell
+data List a = Nil | Cons a (List a)
+```
+`List` is not a type on its own. It has to be a list of *something*, e.g. `List Int` or `List Char`.
+
+`List` is a type *constructor*. We have to pass it a type, and we get a type out
+
+Kind of like a function!
+
+List :: Type -> Type
+List a = $\{Nil\} \sqcup (a \times \text{List a})$
+
+(We are taking a set of values `a` and making another set of values)
+
+---
+
+$$
+\text{List Bool} = \{Nil\} \sqcup (\{\text{True} \sqcup \text{False}\} \times \text{List Bool})
+$$
+Some values:
+- Nil <-> [] 
+- Cons True (Nil) <-> [True]
+- Cons False (Nil) <-> [False]
+- Cons True (Cons True (Nil)) <-> [True, True]
+- Cons True (Cons False (Nil)) <-> [True, False]
+...
+---
+Usually these type constructor "functions" are boring, and we can only pass in other types as arguments.
+
+**What if we removed this restriction?**
+
+```
+data Nat = Z | S Nat
+```
+
+Vector :: Nat -> Type -> Type
+Vector length a = case length of
+  Z -> {Nil}
+  (S k) -> $a \times \text{Vector k a}$
+
+---
+
+Vector 3 Bool 
+ = Bool $\times$ Vector 2 Bool
+ = Bool $\times$ Bool $\times$ Vector 1 Bool
+ = Bool $\times$ Bool $\times$ Bool $\times$ Vector 0 Bool
+ = Bool $\times$ Bool $\times$ Bool $\times$ {Nil}
+
+We have encoded the length of the list (a runtime property) into the type!
+
+---
+Some functions with `Vector`
+```
+append : Vector m a -> Vector n a -> Vector (m + n) a
+append Nil v = v
+append (Cons x rest) v = Cons x (append rest v)
+
+-- We don't need to cover Nil here!
+head : Vector (S k) a -> a
+head (Cons x rest) = x
+
+-- No need to handle Nil / cons combo
+dotProd : Vector len Int -> Vector len Int -> Int
+dotProd Nil Nil = 0
+dotProd (Cons x restA) (Cons y restB) = (x*y) + dotProd restA restB
+```
+---
+Another fun exercise: Can we write a type constructor that takes an `n` and makes a set of `n` different values?
+
+Fin : Nat -> Type
+Fin 0 = {}
+Fin (S k) = {FZ} $\sqcup$ Fin k
+
+```
+index : Vector k a -> Fin k -> a
+-- This case is unreachable!
+index Nil idx = absurd idx
+index (Cons first rest) FZ = first
+index (Cons first rest) (FS idx) = index rest idx
+```
+---
+
+Each signature is telling you the preconditions and postconditions on the Vector's length.
+This is *enforced by the typechecker*, so it is impossible to write a `reverse` implementation that changes the size of the vector:
+
+```
+reverse : Vector len a -> Vector len a
+```
 
 ---
 **What's the difference?**
