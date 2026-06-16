@@ -2,6 +2,10 @@
 marp: true
 theme: gaia
 paginate: true
+style: |
+  section {
+    padding: 20px 40px;
+  }
 ---
 ## From Static Typing to Theorem Proving
 **ENGR340 Presentation**
@@ -168,17 +172,22 @@ void maliciousOrLazyCode(NetworkRequest* publicReq) {
 }
 ```
 ---
-<!-- We stopped configuring memory layouts for the CPU, and started mapping mental models for the human brain -->
-**Types are sets of values** (Flavor 1/2: ADTs)
-We are given the tools to describe what is in these sets:
+**Types are sets of values**
+
+*"Make invalid states unrepresentable"* - Yaron Minsky
+
+Instead of trying to carve our domain types out of big numbers, what if we stopped worrying about memory entirely and focused only on describing the set of "good" values?
+
+To build a set, you only need these things:
+1. A set with just one value, often called the unit type
+2. "AND"-ing sets together via the Cartesian product
+3. "OR"-ing sets together via the disjoint union
+4. Descriptive labels for our values, so the compiler and human can tell them apart.
+
+---
+(Flavor 1/2: ADTs)
 
 ```haskell
--- Aliasing (giving a new name to a set)
-type Name = String
-
--- Wrapping (making a distinct copy of a set, the type-checker will treat them as different things)
-newtype HeightCm = FromInt {toInt :: Int}
-
 -- Pure sum types (This OR That - An enum)
 data EyeColor = Blue | Green | Brown
 
@@ -191,8 +200,8 @@ data User = Anonymous | Guest Name | Registered Person
 -- Recursion
 data JsonValue = JNull | JBool Bool | JNum Double | JArray [JsonValue] | JObject (Map String JsonValue)
 
--- Parametric polymorphism (you can replace 'a' with any type)
--- Note: "Maybe" is a type constructor, not a type. In order to make it a type, you have to specify the 'a'.
+-- Parametric polymorphism (generics)
+-- 'Maybe' is a type constructor; 'Maybe Person' is a concrete type.
 data Maybe a = Just a | Nothing
 ```
 ---
@@ -209,7 +218,7 @@ public record Nil<T>() implements ConsList<T> {}
 public record Cons<T>(T value, ConsList<T> rest) implements ConsList<T> {}
 ```
 ---
-We can now specify the *shape* of our data very precisely. Unfortunately, this won't save us from everything.
+We can now specify the *shape* of our data very precisely. This prevents a lot of the c-style bugs from before, but there's still problems.
 ```haskell
 -- data List a = [] | a : List a
 
@@ -237,7 +246,104 @@ index :: List a -> Int -> a
 index [] _ = undefined
 index (first:_) 0 = first
 index (_:rest) n = if n > 0 then index rest (n - 1) else undefined
+
+lookup :: (Ord k) => Map k v -> k -> v
 ```
+---
+We can solve this with constructs like `Maybe` and `Optional`
+```haskell
+data Maybe a = Nothing | Just a
+
+head :: List a -> Maybe a
+-- If we don't know what to do, we can just return Nothing instead of crashing!
+-- Now it's someone else's problem.
+head [] = Nothing
+head (x:_) = Just x
+```
+Java starts to show its age here...
+```java
+// lol
+Optional<User> userOpt = null;
+// ... somewhere else in the code, this causes a NPE
+if (userOpt.isPresent()) {
+  doSomething(userOpt.get().getName());
+}
+```
+---
+The type signature reflects the possible absence of a value
+Good: this forces us to handle errors
+```haskell
+doSomething :: Int -> IO ()
+stringToInt :: String -> Maybe Int
+
+placeOrder :: IO ()
+placeOrder = do
+  putStrLn "Enter your order quantity here"
+  qtyStr <- getLine
+  case (stringToInt qtyStr) of
+    Nothing -> do
+      putStrLn "Invalid, please try again"
+      placeOrder
+    Just qtyInt -> do
+      putStrLn "OK."
+      -- We have to check that qtyInt parsed correctly
+      -- before we pass it further down the pipeline
+      doSomething qtyInt
+```
+---
+<!--
+Bad: nice function composition and application completely breaks
+```haskell
+-- What we WANT: Total harmony and simplicity
+displayTotal :: UserId -> String
+displayTotal uid =
+  let
+    taxAmount = getTaxRate . getUserRegion $ uid
+  in
+  formatCurrency . applyTax taxAmount . getCart
+
+-- But in reality, we probably have this due to lookup boundaries:
+getTaxRate :: Region -> Maybe Double
+getCart :: UserId -> Maybe Cart
+```
+Note: Nobody writes code like this, but I need a contrived example to show the problem without a bunch of background context...
+
+---
+**Option A**: Accept the pyramid of doom
+```haskell
+displayTotal :: UserId -> String
+displayTotal uid =
+  let
+    taxAmount = getTaxRate . getUserRegion $ uid
+  in
+  case getCart uid of
+    Nothing ->
+      "You don't have anything in the cart!"
+    Just cart ->
+      case taxAmount of
+        Nothing ->
+          "We don't know how much to tax you..."
+        Just amount ->
+          formatCurrency $ applyTax amount cart
+```
+Now imagine: `getUserRegion` is changed to return `Maybe Region`...
+
+---
+**Option B**: Obfuscate the code and leak `Maybe` everywhere by hiding all the null checking inside of infix operators
+```haskell
+displayTotal :: UserId -> Maybe String
+displayTotal uid =
+  let
+    taxRate = getTaxRate . getUserRegion $ uid
+  in
+  formatCurrency <$> (applyTax <$> taxRate <*> getCart uid) 
+```
+(These operators have some great applications in parsing and IO, but can be overused)
+
+---
+-->
+
+
 
 ---
 **What's the difference?**
