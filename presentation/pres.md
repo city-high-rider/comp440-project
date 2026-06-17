@@ -453,6 +453,299 @@ This syntax is needed because
  - We can assign labels to disjoint unions and pattern-match on them easier
 
 ---
+**The cost of dependent types**
+Assume we already have a good `++` (appending)
+```haskell
+(++) : Vector n a -> Vector m a -> Vector (n + m) a
+```
+and try to implement `reverse`
+```haskell
+reverse : Vector n a -> Vector n a
+reverse Nil = Nil
+reverse (Cons first rest) = reverse rest ++ (Cons first Nil)
+```
+---
+```
+Error: While processing right hand side of reverse. Can't solve constraint between:
+  plus len 1
+and
+  S len.
+
+Test:15:28--15:67
+ 11 |
+ 12 | total
+ 13 | reverse : Vector n a -> Vector n a
+ 14 | reverse [] = Nil
+ 15 | reverse (Cons this rest) = (reverse rest) ++ (Cons this Nil)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+During typechecking, the compiler is unable to unify `len + 1` with `S len`
+
+Even though it's obviously the same thing...
+
+---
+**Why is it like this?**
+The definition of `plus`
+```haskell
+plus : Nat -> Nat -> Nat
+plus Z x = x
+plus (S k) x = S (plus k x)
+```
+
+To simplify a `plus` call, we have to pattern match on the first argument, so we have to know what it is
+
+---
+Looking at the problematic expression:
+`(reverse rest) ++ (Cons this Nil)`
+
+Recall appending has the signature
+```haskell
+append : Vector m a -> Vector n a -> Vector (m + n) a
+```
+
+`Cons this Nil` : Vector 1 a
+`reverse rest` : Vector m a
+Resulting type: `Vector (m + 1) a`
+
+But we do not know if `m` is zero or a successor, so we cannot simplify any further!
+
+---
+Therefore, to the type checker, `Vector (m + 1) a` and `Vector (S m) a` are completely different, incompatible types.
+
+But intuitively, we know that `m + 1` and `S m` give the same result. So for any `m`, `Vector (m + 1) a` and `Vector (S m) a` will end up being the same set of values.
+
+Can we communicate this to the type checker?
+
+---
+**A proof of equality**
+Can we make a type constructor that takes two values, and returns the empty set if they are different, and a nonempty set if they are the same?
+
+```haskell
+data EqualNats : Nat -> Nat -> Type where
+  Refl : x -> EqualNats x x
+```
+
+All of these are now valid types:
+ - EqualNats 0 0
+ - EqualNats 0 1
+ - EqualNats 17 31
+ - EqualNats 2 2
+
+But our constructor only lets us build two of the above examples
+
+---
+
+We can make it more general than just natural numbers
+```haskell
+data Equal : a -> a -> Type where
+  Refl : a -> Equal a a
+```
+If we have a *value* of `Equal x y` it means `x` and `y` are *exactly the same thing*.
+
+Unlike a boolean method like `.equals()`, this is structurally impossible to fake
+
+---
+
+The equality type in the standard library has special powers. If we have a proof that `x = y`, we can get the type checker to replace every `x` in the type with a `y`.
+
+We now need to prove that `a + b = b + a` (commutativity) to finish writing `reverse`.
+
+```haskell
+plusComm : (a : Nat) -> (b : Nat) -> a + b = b + a
+plusComm 0 b = ?plusComm_rhs_0
+plusComm (S k) b = ?plusComm_rhs_1
+```
+
+---
+
+We can inspect the holes to see what we are obligated to prove in each case
+```
+   b : Nat
+------------------------------
+plusComm_rhs_0 : b = plus b 0
+````
+```
+   k : Nat
+   b : Nat
+------------------------------
+plusComm_rhs_1 : S (plus k b) = plus b (S k)
+````
+---
+
+```haskell
+plusZeroRightNeutral : (rhs : Nat) -> rhs + 0 = rhs
+plusZeroRightNeutral 0 = ?plusZeroRightNeutral_rhs_0
+plusZeroRightNeutral (S k) = ?plusZeroRightNeutral_rhs_1
+```
+
+```
+plusZeroRightNeutral_rhs_0 : 0 = 0
+```
+
+```
+   k : Nat
+------------------------------
+plusZeroRightNeutral_rhs_1 : S (plus k 0) = S k
+```
+---
+
+```haskell
+plusZeroRightNeutral : (rhs : Nat) -> rhs + 0 = rhs
+plusZeroRightNeutral 0 = Refl
+plusZeroRightNeutral (S k) =
+  let
+    rec : (plus k 0 = k) = plusZeroRightNeutral k
+  in
+  rewrite rec in Refl
+```
+
+```haskell
+plusComm : (a : Nat) -> (b : Nat) -> a + b = b + a
+plusComm 0 b = sym (plusZeroRightNeutral b)
+plusComm (S k) b = ?plusComm_rhs_1
+```
+---
+
+```haskell
+plusComm : (a : Nat) -> (b : Nat) -> a + b = b + a
+plusComm 0 b = sym (plusZeroRightNeutral b)
+plusComm (S k) b = 
+  let
+    rec : (plus k b = plus b k) = plusComm k b
+  in
+  rewrite rec in ?plusComm_rhs1
+```
+
+```
+   k : Nat
+   b : Nat
+   rec : plus k b = plus b k
+------------------------------
+plusComm_rhs1 : S (plus b k) = plus b (S k)
+```
+---
+```hs
+plusLemma : (left : Nat) -> (right : Nat) -> left + (S right) = S (left + right)
+plusLemma 0 0 = ?plusLemma_rhs_2
+plusLemma 0 (S k) = ?plusLemma_rhs_3
+plusLemma (S k) 0 = ?plusLemma_rhs_4
+plusLemma (S k) (S j) = ?plusLemma_rhs_5
+```
+```
+plusLemma_rhs_2 : 1 = 1
+
+   k : Nat
+------------------------------
+plusLemma_rhs_3 : S (S k) = S (S k)
+```
+
+```
+   k : Nat
+------------------------------
+plusLemma_rhs_4 : S (plus k 1) = S (S (plus k 0))
+```
+---
+```hs
+plusLemma : (left : Nat) -> (right : Nat) -> left + (S right) = S (left + right)
+plusLemma 0 0 = Refl
+plusLemma 0 (S k) = Refl
+plusLemma (S k) 0 =
+  rewrite (plusZeroRightNeutral k) in
+  ?plusLemma_rhs_4
+plusLemma (S k) (S j) = ?plusLemma_rhs_5
+```
+
+```
+   k : Nat
+------------------------------
+plusLemma_rhs_4 : S (plus k 1) = S (S k)
+```
+---
+```hs
+plusOneSucc : (x : Nat) -> x + 1 = S x
+plusOneSucc 0 = ?plusOneSucc_rhs_0
+plusOneSucc (S k) = ?plusOneSucc_rhs_1
+```
+
+```
+plusOneSucc_rhs_0 : 1 = 1
+
+   k : Nat
+------------------------------
+plusOneSucc_rhs_1 : S (plus k 1) = S (S k)
+```
+
+```hs
+plusOneSucc : (x : Nat) -> x + 1 = S x
+plusOneSucc 0 = Refl
+plusOneSucc (S k) = rewrite (plusOneSucc k) in Refl
+```
+---
+```hs
+plusLemma : (left : Nat) -> (right : Nat) -> left + (S right) = S (left + right)
+plusLemma 0 0 = Refl
+plusLemma 0 (S k) = Refl
+plusLemma (S k) 0 =
+  rewrite (plusZeroRightNeutral k) in
+  rewrite (plusOneSucc k) in
+  Refl
+plusLemma (S k) (S j) = ?plusLemma_rhs_5
+```
+
+```
+   k : Nat
+   j : Nat
+------------------------------
+plusLemma_rhs_5 : S (plus k (S (S j))) = S (S (plus k (S j)))
+```
+If you squint really hard...
+
+---
+```hs
+plusLemma : (left : Nat) -> (right : Nat) -> left + (S right) = S (left + right)
+plusLemma 0 0 = Refl
+plusLemma 0 (S k) = Refl
+plusLemma (S k) 0 =
+  rewrite (plusZeroRightNeutral k) in
+  rewrite (plusOneSucc k) in
+  Refl
+plusLemma (S k) (S j) =
+  rewrite (plusLemma k (S j)) in
+  Refl
+```
+---
+```hs
+plusComm : (a : Nat) -> (b : Nat) -> a + b = b + a
+plusComm 0 b = sym (plusZeroRightNeutral b)
+plusComm (S k) b = 
+  let
+    rec : (plus k b = plus b k) = plusComm k b
+  in
+  rewrite rec in
+  rewrite (plusLemma b k) in
+  ?plusComm_rhs1
+```
+
+```
+   k : Nat
+   b : Nat
+   rec : plus k b = plus b k
+------------------------------
+plusComm_rhs1 : S (plus b k) = S (plus b k)
+```
+---
+**... Finally!**
+```hs
+reverse : {n : Nat} -> Vector n a -> Vector n a
+reverse {n = 0} [] = Nil
+reverse {n = S k} (Cons this rest) = 
+  rewrite (plusComm 1 k) in
+  (reverse rest) `append` (Cons this Nil)
+```
+
+
+
+---
 **What's the difference?**
 **TODO: Move this slide!!**
 Classes and interfaces can mimic ADTs, but they are fundamentally different.
