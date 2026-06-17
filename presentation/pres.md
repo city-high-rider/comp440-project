@@ -351,7 +351,7 @@ We have encoded the length of the list (a runtime property) into the type!
 
 ---
 Some functions with `Vector`
-```
+```haskell
 append : Vector m a -> Vector n a -> Vector (m + n) a
 append Nil v = v
 append (Cons x rest) v = Cons x (append rest v)
@@ -365,28 +365,92 @@ dotProd : Vector len Int -> Vector len Int -> Int
 dotProd Nil Nil = 0
 dotProd (Cons x restA) (Cons y restB) = (x*y) + dotProd restA restB
 ```
----
-Another fun exercise: Can we write a type constructor that takes an `n` and makes a set of `n` different values?
 
-Fin : Nat -> Type
-Fin 0 = {}
-Fin (S k) = {FZ} $\sqcup$ Fin k
-
-```
-index : Vector k a -> Fin k -> a
--- This case is unreachable!
-index Nil idx = absurd idx
-index (Cons first rest) FZ = first
-index (Cons first rest) (FS idx) = index rest idx
-```
 ---
 
 Each signature is telling you the preconditions and postconditions on the Vector's length.
 This is *enforced by the typechecker*, so it is impossible to write a `reverse` implementation that changes the size of the vector:
 
-```
+```haskell
 reverse : Vector len a -> Vector len a
 ```
+---
+Another fun exercise: Can we write a type constructor that takes an `n` and makes a set of `n` different values?
+
+Fin : Nat -> Type
+Fin 0 = {}
+Fin (S k) = {FZ} $\sqcup$ {FS x | x $\in$ Fin k}
+
+Fin 1
+ = {FZ} $\sqcup$ {FS x | x $\in$ Fin 0}
+ = {FZ} $\sqcup$ {FS x | x $\in$ {}}
+ = {FZ}
+ $\cong$ {0}
+
+---
+
+Fin 2
+ = {FZ} $\sqcup$ {FS x | x $\in$ Fin 1}
+ = {FZ} $\sqcup$ {FS x | x $\in$ {FZ}}
+ = {FZ} $\sqcup$ {FS (FZ)}
+ = {FZ, FS (FZ)}
+ $\cong$ {0, 1}
+
+---
+Fin 3
+ = {FZ} $\sqcup$ {FS x | x $\in$ Fin 2}
+ = {FZ} $\sqcup$ {FS x | x $\in$ {FZ, FS (FZ)}}
+ = {FZ} $\sqcup$ {FS (FZ), FS (FS (FZ))}
+ = {FZ, FS (FZ), FS (FS (FZ))}
+ $\cong$ {0, 1, 2}
+
+So Fin k $\cong$ {0, 1, 2, ..., k - 1}
+
+```haskell
+index : Vector k a -> Fin k -> a
+index (Cons first rest) FZ = first
+index (Cons first rest) (FS idx) = index rest idx
+```
+---
+
+**The actual syntax for declaring dependent types is "bottom-up," not "top-down."**
+
+1. The "signature" of the type constructor is still here
+```haskell
+data Vector : Nat -> Type -> Type where
+```
+
+You can think of this as defining a family of different types at once, E.g.
+- Vector 0 Bool
+- Vector 35 Int
+- Vector 3 (Vector 0 Double)
+etc. are all distinct types, but have the same "shape"
+
+---
+2. We define the common constructors for each `Vector` type, and for each one, determine exactly which `Vector`s it makes.
+```haskell
+-- The signature from the last slide
+data Vector : Nat -> Type -> Type where
+  -- Nil doesn't take any arguments, and is in the set of
+  -- empty vectors parameterised by any type.
+  Nil : Vector 0 a
+  -- Cons takes a value of 'a', a vector of length n,
+  -- and is in the set of (n+1) long vectors parameterised by 'a'.
+  Cons : a -> Vector n a -> Vector (S n) a
+```
+---
+
+Here is `fin` with this syntax
+```haskell
+data Fin : Nat -> Type where
+  FZ : Fin (S k)
+  FS : Fin m -> Fin (S m)
+```
+Notice that `Fin 0` is a valid type, but there is no constructor that makes a value of `Fin 0`!
+
+This syntax is needed because
+ - It is much easier for the compiler to reason about
+ - We can assign labels to disjoint unions and pattern-match on them easier
 
 ---
 **What's the difference?**
