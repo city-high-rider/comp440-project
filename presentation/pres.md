@@ -743,17 +743,115 @@ reverse {n = S k} (Cons this rest) =
   (reverse rest) `append` (Cons this Nil)
 ```
 
+---
 
+**Termination**
+*"We can't fake equality"*
+
+```haskell
+bad : 0 = 1
+bad = bad
+```
+
+Typechecks, but loops infinitely when evaluated.
+Can be generalised:
+```haskell
+bad : a
+bad = bad
+```
+---
+Check 1: Only allow recursion on *syntactic subterms* of current arguments.
+```haskell
+isEven : Nat -> Bool
+isEven Z = True
+isEven (S Z) = False
+-- Allowed: k is a subterm of S k
+isEven (S k) = not (isEven k)
+```
+```haskell
+collatz : Nat -> Nat
+collatz Z = Z
+collatz (S Z) = (S Z)
+-- Not ok: recursive call is not on a subterm
+collatz num = if (isEven num) then collatz (num / 2) else collatz (3*num + 1)
+```
+---
+The idea: every value is finitely big, so by repeatedly taking subterms, we are guaranteed to eventually arrive at a base case.
+```haskell
+data NatStream : Type where
+  Done : NatStream
+  More : Nat -> (NatStream -> NatStream)
+
+moreNats : NatStream -> NatStream
+moreNats Done = Done
+moreNats (More thisNat getTail) = getTail (More (S thisNat) getTail)
+
+nats : NatStream
+nats = moreNats (More 0 moreNats)
+```
+---
+**Evaluating `nats`**
+nats
+  = moreNats (More 0 moreNats)
+  = moreNats (More 1 moreNats)
+  = moreNats (More 2 moreNats)
+  ...
+
+Clearly, not every value is finitely big. There is no recursion, but we end up in an infinite loop
 
 ---
-**What's the difference?**
-**TODO: Move this slide!!**
-Classes and interfaces can mimic ADTs, but they are fundamentally different.
-An ADT is a potentially *infinite* set of *finite* values. Each value must be inductively constructed up from some base case, so we know all the possible shapes of values and can rip the type open with pattern matching to work with it. This also lets us provide totality guarantees for recursive calls on syntactic subterms. These correspond to algebras.
-OO modelling corresponds to a co-algebra, and can support truly infinite values. We do not care about construction, only about what we can *do* with values. This is more flexible, but many mainstream OO languages do not aim to guarantee soundness.
+Check 2: No negative types
 
-For algebras, we would need to use positivity checking to make sure each value is truly finite, and for co-algebras we need to use prooductivity checking to make sure that the program doesn't randomly loop forever. 
+Here is the problem:
+```hs
+More : Nat -> (NatStream -> NatStream)
+````
+Specifically, `NatStream` being on the left of an arrow
+```hs
+(NatStream -> ...)
+```
 
+So, we should not allow this in type definitions.
 
+---
+**Types as propositions**
+Look at the kinds of signatures we have been writing:
+```hs
+plusZeroRightNeutral : (x : Nat) -> x + 0 = x
+plusComm : (a : Nat) -> (b : Nat) -> a + b = b + a
+Refl : 1 = 1
+```
+These look less like types, and more like mathematical statements. 
+
+---
+| Type                              | Proposition                                              |
+| --------------------------------- | -------------------------------------------------------- |
+| Unit / ()                         | True                                                     |
+| Void                              | False                                                    |
+| Product type / tuple (a,b)        | Conjunction                                              |
+| Sum type / Either a b             | Disjunction                                              |
+| Function (->)                     | Implication                                              |
+| \=                                | Equality                                                 |
+| Dependent function (x : a) -> P x | Universal quantification $\forall x \in a. P(x)$        |
+| Dependent pair (x : a \*\* P x)   | Existential quantification $\exists x \in a. P(x)$ |
+
+---
+```hs
+plusComm : (a : Nat) -> (b : Nat) -> a + b = b + a
+```
+plusComm : $\forall a \in \mathbb{N}. \forall b \in \mathbb{N}. a + b = b + a$
+
+```hs
+absurd : Void -> p
+```
+absurd : $\forall P \in \text{Type}. \bot \implies P$
+
+```hs
+-- Not possible to implement
+lem : Either p (p -> Void)
+```
+lem : $\forall P \in \text{Type}. P \lor (P \implies \bot)$
+
+---
 
 
