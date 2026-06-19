@@ -853,5 +853,129 @@ lem : Either p (p -> Void)
 lem : $\forall P \in \text{Type}. P \lor (P \implies \bot)$
 
 ---
+We are not limited to just the logical connectives; we can make types that encode more interesting propositions / relations
+```haskell
+data IsEven : Nat -> Type where
+  DoubleOf : (x : Nat) -> IsEven (2*x)
+```
 
+```haskell
+data LTE : Nat -> Nat -> Type where
+  ZLTE : LTE 0 x
+  Bump : LTE x y -> LTE (S x) (S y)
+```
 
+Doing this is fundamentally a creative exercise: does the type you defined faithfully capture your *intent*?
+
+You cannot formally prove that the encoding is adequate in the system itself.
+
+---
+Another encoding of `LTE`
+```haskell
+data LTE : Nat -> Nat -> Type where
+  Sure : (k, x, y : Nat) -> x + k = y -> LTE x y
+```
+Semantically the same, but completely different types.
+The type checker can guarantee that your program matches your specification, but it cannot guarantee that your specification matches your thoughts.
+
+See Tarski's undefinability of truth
+
+---
+
+**Some more sane alternatives**
+
+Property based testing: the same mindset of thinking in properties, but lots of test cases instead of a proof
+
+```hs
+dedup :: Eq a => [a] -> [a]
+dedup [] = []
+dedup [x] = [x]
+dedup (x:y:xs)
+  | x == y    = dedup (y:xs)
+  | otherwise = x : dedup (y:xs)
+
+prop_noDuplicates :: [Int] -> Bool
+prop_noDuplicates xs = unique (dedup xs)
+  where
+    unique []     = True
+    unique (y:ys) = not (y `elem` ys) && unique ys
+````
+---
+
+```bash
+cabal test
+
+Running 1 test suites...
+Test suite dedup-tests: RUNNING...
+Testing uniqueness
+*** Failed! Falsified (after 6 tests and 2 shrinks):     
+[-5,0,-5]
+```
+
+NOT a formal proof, but great at catching edge cases in practice. "Shrinks" try to find the minimal counterexample which breaks the property.
+
+---
+
+Refinement types: Attach logical predicates to existing types, but let an SMT solver try and verify everything.
+
+```hs
+{-@ type OrdList a = [a] <{\x v -> x <= v}>@-}
+
+{-@ ups :: OrdList Int @-}
+ups :: [Int]
+ups = [1, 3, 2]
+```
+
+Has the worst error messages known to man (it is just raw SMT output)
+
+---
+
+```
+**** LIQUID: UNSAFE ************************************************************
+src/Euclid.hs:24:1: error:
+    Liquid Type Mismatch
+    .
+    The inferred type
+      VV : GHC.Types.Int
+    .
+    is not a subtype of the required type
+      VV : {VV##1128 : GHC.Types.Int | ?a <= VV##1128}
+    .
+    in the context
+      ?a : GHC.Types.Int
+    Constraint id 10
+   |
+24 | ups = [1, 3, 2]
+   | ^^^^^^^^^^^^^^^
+```
+
+But it IS a formal proof, and doesn't require a bunch of new types or proof code.
+
+---
+
+```hs
+{-@ type OrdList a = [a] <{\x v -> x <= v}>@-}
+
+{-@ insertSort :: (Ord a) => [a] -> OrdList a @-}
+insertSort :: Ord a => [a] -> [a]
+insertSort = foldr insert []
+
+{-@ insert :: (Ord a) => a -> OrdList a -> OrdList a @-}
+insert :: Ord a => a -> [a] -> [a]
+insert x [] = [x]
+insert x (y:ys)
+  | x <= y = x : y : ys
+  | otherwise = y : insert x ys
+```
+
+```
+**** LIQUID: SAFE (10 constraints checked) *************************************
+```
+
+---
+
+**Lots of techniques for code correctness, each with tradeoffs**
+
+Simple static typing -> property based testing -> refinement types -> dependent types / proofs
+
+---
